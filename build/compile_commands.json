@@ -1,0 +1,8 @@
+[
+{
+  "directory": "D:/Aidan/program/shell/build",
+  "command": "C:\\msys64\\ucrt64\\bin\\g++.exe   -g -std=c++23 -o CMakeFiles\\shell.dir\\src\\main.cpp.obj -c D:\\Aidan\\program\\shell\\src\\main.cpp",
+  "file": "D:/Aidan/program/shell/src/main.cpp",
+  "output": "CMakeFiles/shell.dir/src/main.cpp.obj"
+}
+]

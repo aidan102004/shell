@@ -1,0 +1,3 @@
+D:/Aidan/program/shell/build/CMakeFiles/shell.dir
+D:/Aidan/program/shell/build/CMakeFiles/edit_cache.dir
+D:/Aidan/program/shell/build/CMakeFiles/rebuild_cache.dir
