@@ -23,8 +23,49 @@ int main() {
         std::cout << "$ ";
         std::string command;
         std::getline(std::cin, command);
-
         std::vector<std::string> tokens; //creates string vector to hold parsed input
+        std::string cur = "";
+        bool iq = false;
+        bool idq = false;
+        for (size_t i = 0; i<command.size(); i++) {
+            char c = command[i];
+            if (c == '\\' && !iq && !idq) {  // backslash outside quotes
+                if (i + 1 < command.size()) {
+                    cur += command[++i];  // skip the backslash, add next char literally
+                }
+            }
+            else if (c == '\\' && idq) {          // backslash inside double quotes
+                if (i + 1 < command.size()) {
+                    char next = command[i + 1];
+                    if (next == '"' || next == '\\') {
+                        cur += command[++i];         // only escape " and 
+                    } else {
+                        cur += c;                    // otherwise keep the backslash literally
+                    }
+                }
+            }
+            else if (c == '\"' && !idq && !iq) {
+                idq = true;
+            }
+            else if (c == '\'' && !iq && !idq) {
+                iq = true;
+            } else if( c== '\'' && iq) {
+                iq = false;
+            }
+            else if (c == '\"' && idq) {
+                idq = false;
+            } else if (c==' ' && !iq && !idq) {
+                if (!cur.empty()) {
+                    tokens.push_back(cur); // space outside quotes = end of token
+                    cur = "";
+                }
+            } else {
+                cur += c;
+            }
+        }
+        
+        if (!cur.empty()) tokens.push_back(cur);
+        if (tokens.empty()) continue;
         std::string cmd = tokens[0]; //sets the cmd to the first element
         if (cmd == "exit") {
             break;
