@@ -12,23 +12,30 @@
 
 namespace fs = std::filesystem;
 
+//forward declarations
+void standard_output(const std::vector<std::string>& data, const std::string& path);
+void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
+std::string find_path(const std::string& arg);
+void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens);
+void handle_cd(const std::string& arg);
+
 //builtin commands list
 std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
 };
 
-void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
-void handle_cd(const std::string& arg);
-std::string find_path(const std::string& arg);
 int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
+
     while (true) {
         std::cout << "$ ";
         std::string command;
-        std::getline(std::cin, command);
+        std::getline(std::cin, command); //gets input
+
         std::vector<std::string> tokens; //creates string vector to hold parsed input
+
         std::string cur = "";
         bool iq = false;
         bool idq = false;
@@ -79,10 +86,17 @@ int main() {
           handle_type(tokens[1], commands);
         }
         else if (cmd == "echo") {
-            
-            for(size_t i = 1; i <tokens.size(); i++) {
-                if (i > 1) {
-                std::cout << " ";
+            auto it = std::find_if(tokens.begin(), tokens.end(), [](const std::string& so) {
+                return so == ">" || so == "1>";
+            });
+
+            if (it != tokens.end()) {
+                std::vector<std::string> data(tokens.begin() + 1, it);
+                standard_output(data , tokens[std::distance(tokens.begin(), it) + 1]);
+            }
+            else {
+                for(size_t i = 1; i <tokens.size(); i++) {
+                if (i > 1) std::cout << " ";
                 std::cout << tokens[i];
                 }
                 std::cout << std::endl;
@@ -94,21 +108,51 @@ int main() {
         else if (cmd == "cd") {
             handle_cd(tokens.size() > 1 ? tokens[1] : ""); //handles cd 
         }
+        else {
+            execute(find_path(cmd), command, tokens); //executes the executable
+        }
     }
 }
+
+void standard_output(const std::vector<std::string>& data, const std::string& path) {
+    std::string text;
+    for (const auto& w : data) {
+        text += w;
+        text += " ";
+    }
+    fs::path cwd = fs::current_path();
+    std::string spath = cwd.string() + '/' + path;
+    const char* cp = spath.c_str();
+    struct stat sb;
+    bool valid = false;
+    valid = (stat(cp, &sb) == 0 && !(sb.st_mode & S_IFDIR)) ? true : false;
+    if (!valid) {
+        std::cout << "cd: " << path << ": No such file or directory" << std::endl;
+        std::ofstream newfile(path);
+        newfile.close();
+    } else {
+        std::ofstream file;
+        file.open(path);
+        file << text + "\n";
+        file.close();
+    }
+}
+
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins) {
     if (builtins.find(arg) != builtins.end()) {
-            std::cout << arg << " is a shell builtin" << std::endl;
-            return;
-        }
-        std::string found_path = find_path(arg);
+        std::cout << arg << " is a shell builtin" << std::endl;
+        return;
+    }
+    std::string found_path = find_path(arg);
 
-        if (!found_path.empty()) {
-            std::cout << arg << " is " << found_path << std::endl;
-        } else {
-            std::cout << arg << ": not found" << std::endl;
-        }
+    if (!found_path.empty()) {
+        std::cout << arg << " is " << found_path << std::endl;
+    } else {
+        std::cout << arg << ": not found" << std::endl;
+    }
+    
 }
+
 void handle_cd(const std::string& arg) {
     const char* path = arg.c_str(); //converts the arg into a pointer pointing to the first char in the array of chars
     if (arg.substr(0, 1) == "~") {
@@ -119,6 +163,7 @@ void handle_cd(const std::string& arg) {
         std::cout << "cd: " << path << ": No such file or directory" << std::endl;
     } 
 }
+
 std::string find_path(const std::string& arg) {
     const char* p = std::getenv("PATH"); //gets the path env variable
     if (!p) {
@@ -142,4 +187,30 @@ std::string find_path(const std::string& arg) {
     }
 
     return "";
+}
+
+void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens) {
+            if (exe_path.empty()) {
+                std::cout << command << ": command not found" << std::endl;
+                return;
+            }
+
+            std::vector<char*> argv; 
+            for (auto& t : tokens) {
+                argv.push_back(const_cast<char*>(t.c_str())); //adds all tokens into a char array
+            }
+            argv.push_back(nullptr); //adds a nullptr to the end so it knows when the array ends
+            pid_t pid = fork(); //creates a new child process
+            if (pid == -1) {
+                perror("fork");
+            }
+            if (pid == 0) {
+                execvp(exe_path.c_str(), argv.data()); //executes the file at the path given the arguements 
+                perror("execvp");
+                _exit(1);
+            }   
+            if (pid > 0) {
+                int status;
+                waitpid(pid, &status, 0); //waits for the child PID to finish executing before running the shell process
+            }
 }
