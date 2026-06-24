@@ -15,7 +15,8 @@ std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
 };
 
-void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins)
+void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
+std::string find_path(const std::string& arg);
 int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
@@ -87,5 +88,9 @@ int main() {
     }
 }
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins) {
+    
+}
+
+std::string find_path(const std::string& arg) {
     
 }
