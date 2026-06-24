@@ -1,21 +1,11 @@
-cmake_minimum_required(VERSION 3.10.0)
-project(shell VERSION 0.1.0 LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.13)
 
-# C++ standard
-set(CMAKE_CXX_STANDARD 23)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
+project(shell-starter-cpp)
 
-# C standard
-set(CMAKE_C_STANDARD 11)
-set(CMAKE_C_STANDARD_REQUIRED ON)
+file(GLOB_RECURSE SOURCE_FILES src/*.cpp src/*.hpp)
 
-# Collect source files
-file(GLOB_RECURSE SOURCES
-    "${CMAKE_SOURCE_DIR}/src/*.cpp"
-    "${CMAKE_SOURCE_DIR}/src/*.c"
-)
+set(CMAKE_CXX_STANDARD 23) # Enable the C++23 standard
 
-add_executable(shell ${SOURCES})
+add_executable(shell ${SOURCE_FILES})
 
 target_link_libraries(shell PRIVATE readline)
