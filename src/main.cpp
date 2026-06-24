@@ -15,6 +15,7 @@ std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
 };
 
+void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins)
 int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
@@ -70,6 +71,9 @@ int main() {
         if (cmd == "exit") {
             break;
         }
+        if (cmd == "type") {
+          handle_type(tokens[1], commands);
+        }
         else if (cmd == "echo") {
             
             for(size_t i = 1; i <tokens.size(); i++) {
@@ -81,4 +85,7 @@ int main() {
             }
         }
     }
+}
+void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins) {
+    
 }
