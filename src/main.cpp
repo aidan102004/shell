@@ -10,6 +10,8 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 
+namespace fs = std::filesystem;
+
 //builtin commands list
 std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
@@ -92,5 +94,26 @@ void handle_type(const std::string& arg, const std::unordered_set<std::string>& 
 }
 
 std::string find_path(const std::string& arg) {
-    
+    const char* p = std::getenv("PATH"); //gets the path env variable
+    if (!p) {
+        std::cout << arg << ": not found" << std::endl;
+        return "";
+    }
+
+    std::string path = p;
+    std::stringstream ss(path);
+    std::string dir;
+    //reads the path into dr array splitting them up :
+    while (std::getline(ss, dir, ':')) {
+
+        if (dir.empty()) continue;
+
+        fs::path full_path = dir + "/" + arg; //appends the arg to the end
+
+        if (access(full_path.c_str(), X_OK) == 0) {
+            return full_path.string(); //checks the path to see if the file is an executable
+        }
+    }
+
+    return "";
 }
