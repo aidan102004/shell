@@ -18,6 +18,7 @@ std::unordered_set<std::string> commands = {
 };
 
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
+void handle_cd(const std::string& arg);
 std::string find_path(const std::string& arg);
 int main() {
     std::cout << std::unitbuf;
@@ -87,6 +88,12 @@ int main() {
                 std::cout << std::endl;
             }
         }
+        else if (cmd == "pwd") {
+            std::cout << fs::current_path().string() << std::endl; //prints out the current path
+        }
+        else if (cmd == "cd") {
+            handle_cd(tokens.size() > 1 ? tokens[1] : ""); //handles cd 
+        }
     }
 }
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins) {
@@ -102,7 +109,16 @@ void handle_type(const std::string& arg, const std::unordered_set<std::string>& 
             std::cout << arg << ": not found" << std::endl;
         }
 }
+void handle_cd(const std::string& arg) {
+    const char* path = arg.c_str(); //converts the arg into a pointer pointing to the first char in the array of chars
+    if (arg.substr(0, 1) == "~") {
+        path = std::getenv("HOME"); //gets the path to home
+    }
 
+    if (chdir(path) != 0) { //chdir returns -1 if it cannot find the directory, otherwise it changes the path
+        std::cout << "cd: " << path << ": No such file or directory" << std::endl;
+    } 
+}
 std::string find_path(const std::string& arg) {
     const char* p = std::getenv("PATH"); //gets the path env variable
     if (!p) {
