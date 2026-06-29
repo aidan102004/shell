@@ -112,6 +112,10 @@ int main() {
             else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
                 redirect_stderr = tokens[i + 1];
                 i++;
+            } else if (tokens[i] == "2>>" && i + 1 <tokens.size()) {
+                redirect_stderr = tokens[i + 1];
+                FLAG_CONST = O_APPEND;
+                i++;
             } 
             else {
                 clean_tokens.push_back(tokens[i]);
