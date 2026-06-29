@@ -16,7 +16,7 @@ namespace fs = std::__fs::filesystem;
 // Forward declarations
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
 std::string find_path(const std::string& arg);
-void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr);
+void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 
 // Builtin commands list
@@ -24,10 +24,10 @@ std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
 };
 
-int redirect_fd(int fd_num, const std::string& path) {
+int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
     int saved = dup(fd_num);
-    int fd = open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int fd = open(path.c_str(), O_WRONLY | O_CREAT | FLAG_CONST, 0644);
     if (fd < 0) {
         perror("open");
         close(saved);
@@ -96,6 +96,7 @@ int main() {
         if (tokens.empty()) continue;
 
         std::string redirect_file = "";
+        int FLAG_CONST = O_TRUNC;
         std::string redirect_stderr = "";
         std::vector<std::string> clean_tokens;
 
@@ -103,10 +104,15 @@ int main() {
             if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size()) {
                 redirect_file = tokens[i + 1];
                 i++; // skip filename token too
-            } else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
+            } else if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
+                redirect_file = tokens[i + 1];
+                FLAG_CONST = O_APPEND;
+                i++; 
+            }
+            else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
                 redirect_stderr = tokens[i + 1];
                 i++;
-            }
+            } 
             else {
                 clean_tokens.push_back(tokens[i]);
             }
@@ -118,14 +124,14 @@ int main() {
         if (cmd == "exit") {
             break;
         } else if (cmd == "type") {
-            int saved_out = redirect_fd(STDOUT_FILENO, redirect_file);
-            int saved_err = redirect_fd(STDERR_FILENO, redirect_stderr);
+            int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
+            int saved_err = redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
             handle_type(clean_tokens.size() > 1 ? clean_tokens[1] : "", commands);
             restore_fd(STDOUT_FILENO, saved_out);
             restore_fd(STDERR_FILENO, saved_err);
         } else if (cmd == "echo") {
-            int saved_out = redirect_fd(STDOUT_FILENO, redirect_file);
-            int saved_err = redirect_fd(STDERR_FILENO, redirect_stderr);
+            int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
+            int saved_err = redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
             for (size_t i = 1; i < clean_tokens.size(); i++) {
                 if (i > 1) std::cout << " ";
                 std::cout << clean_tokens[i];
@@ -134,15 +140,15 @@ int main() {
             restore_fd(STDOUT_FILENO, saved_out);
             restore_fd(STDERR_FILENO, saved_err);
         } else if (cmd == "pwd") {
-            int saved_out = redirect_fd(STDOUT_FILENO, redirect_file);
-            int saved_err = redirect_fd(STDERR_FILENO, redirect_stderr);
+            int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
+            int saved_err = redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
             std::cout << fs::current_path().string() << std::endl;
             restore_fd(STDOUT_FILENO, saved_out);
             restore_fd(STDERR_FILENO, saved_err);
         } else if (cmd == "cd") {
             handle_cd(clean_tokens.size() > 1 ? clean_tokens[1] : "");
         } else {
-            execute(find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr);
+            execute(find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr, FLAG_CONST);
         }
     }
 
@@ -194,7 +200,7 @@ std::string find_path(const std::string& arg) {
 }
 
 void execute(const std::string& exe_path, const std::string& command,
-             const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr) {
+             const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST) {
     if (exe_path.empty()) {
         std::cerr << command << ": command not found" << std::endl;
         return;
@@ -214,12 +220,12 @@ void execute(const std::string& exe_path, const std::string& command,
 
     if (pid == 0) {
         if (!redirect_file.empty()) {
-            int fd = open(redirect_file.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int fd = open(redirect_file.c_str(), O_WRONLY | O_CREAT | FLAG_CONST, 0644);
             dup2(fd, STDOUT_FILENO);
             close(fd);
         }
         if (!redirect_stderr.empty()) {           
-            int fd = open(redirect_stderr.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            int fd = open(redirect_stderr.c_str(), O_WRONLY | O_CREAT | FLAG_CONST, 0644);
             dup2(fd, STDERR_FILENO);              
             close(fd);
         }
