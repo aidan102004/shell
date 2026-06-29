@@ -10,6 +10,7 @@
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <termios.h>
 
 namespace fs = std::__fs::filesystem;
 
@@ -23,6 +24,8 @@ void handle_cd(const std::string& arg);
 std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
 };
+
+struct termios original_termios;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
@@ -45,15 +48,33 @@ void restore_fd(int fd_num, int saved_fd) {
     close(saved_fd);
 }
 
+void disable_raw() {
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios);
+}
+void enable_raw(struct termios raw) {
+    tcgetattr(STDIN_FILENO, &raw);
+    atexit(disable_raw);
+    struct termios raw = original_termios;
+    raw.c_cflag &= ~(ECHO | ICANON);
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+}
+
 int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
 
+    struct termios orig;
+
     while (true) {
         std::cout << "$ ";
+        char c;
         std::string command;
         std::getline(std::cin, command);
-
+        while (true) {
+            struct termios raw;
+            enable_raw(raw);
+            if (read(STDIN_FILENO, &c, 1) <= 0) break;
+        }
         std::vector<std::string> tokens;
 
         std::string cur = "";
