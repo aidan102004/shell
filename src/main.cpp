@@ -19,6 +19,9 @@ void handle_type(const std::string& arg, const std::unordered_set<std::string>& 
 std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
+std::string read_input();
+std::string completion(std::string cur_input);
+void parse(const std::string& command, std::vector<std::string>& tokens);
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -63,68 +66,14 @@ int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     std::string command;
-    struct termios orig;
 
     while (true) {
         std::cout << "$ ";
         char c;
-        while (true) {
-            enable_raw();
-            if (read(STDIN_FILENO, &c, 1) <= 0) break;
-
-            if (c == '\n') {
-                break;
-            } else if (c == '\t') {
-                std::cout << "tab pressed" << std::endl;
-                break;
-            } else if (c == 127) {
-                if (!command.empty()) {command.pop_back(); std::cout << "\b \b" << std::flush;}
-            }
-            else {
-                command += c;
-                std::cout << c;
-            }
-        }
-        //std::getline(std::cin, command);
+        enable_raw();
+        std::string command = read_input();
         std::vector<std::string> tokens;
-
-        std::string cur = "";
-        bool iq = false;   // inside single quotes
-        bool idq = false;  // inside double quotes
-        for (size_t i = 0; i < command.size(); i++) {
-            char c = command[i];
-            if (c == '\\' && !iq && !idq) {         // backslash outside quotes
-                if (i + 1 < command.size()) {
-                    cur += command[++i];
-                }
-            } else if (c == '\\' && idq) {          // backslash inside double quotes
-                if (i + 1 < command.size()) {
-                    char next = command[i + 1];
-                    if (next == '"' || next == '\\') {
-                        cur += command[++i];
-                    } else {
-                        cur += c;
-                    }
-                }
-            } else if (c == '\"' && !idq && !iq) {
-                idq = true;
-            } else if (c == '\'' && !iq && !idq) {
-                iq = true;
-            } else if (c == '\'' && iq) {
-                iq = false;
-            } else if (c == '\"' && idq) {
-                idq = false;
-            } else if (c == ' ' && !iq && !idq) {
-                if (!cur.empty()) {
-                    tokens.push_back(cur);
-                    cur = "";
-                }
-            } else {
-                cur += c;
-            }
-        }
-
-        if (!cur.empty()) tokens.push_back(cur);
+        parse(command, tokens);
         if (tokens.empty()) continue;
 
         std::string redirect_file = "";
@@ -272,4 +221,70 @@ void execute(const std::string& exe_path, const std::string& command,
 
     int status;
     waitpid(pid, &status, 0);
+}
+
+std::string read_input() {
+    std::string input;
+    char c;
+    while (read(STDIN_FILENO, &c, 1) > 0) {
+        if (c == '\n') { std::cout << '\n'; break; }
+        else if (c == '\t')
+        { 
+            std::string s = completion(input);
+        }
+        else if (c == 127) {
+            if (!input.empty()) {
+                input.pop_back();
+                std::cout << "\b \b" << std::flush;
+            }
+        } else {
+            input += c;
+            std::cout << c;
+        }
+    }
+    return input;
+}
+
+std::string completion(std::string cur_input) {
+    //todo
+}
+
+void parse(const std::string& command, std::vector<std::string>& tokens) {
+    std::string cur = "";
+        bool iq = false;   // inside single quotes
+        bool idq = false;  // inside double quotes
+        for (size_t i = 0; i < command.size(); i++) {
+            char c = command[i];
+            if (c == '\\' && !iq && !idq) {         // backslash outside quotes
+                if (i + 1 < command.size()) {
+                    cur += command[++i];
+                }
+            } else if (c == '\\' && idq) {          // backslash inside double quotes
+                if (i + 1 < command.size()) {
+                    char next = command[i + 1];
+                    if (next == '"' || next == '\\') {
+                        cur += command[++i];
+                    } else {
+                        cur += c;
+                    }
+                }
+            } else if (c == '\"' && !idq && !iq) {
+                idq = true;
+            } else if (c == '\'' && !iq && !idq) {
+                iq = true;
+            } else if (c == '\'' && iq) {
+                iq = false;
+            } else if (c == '\"' && idq) {
+                idq = false;
+            } else if (c == ' ' && !iq && !idq) {
+                if (!cur.empty()) {
+                    tokens.push_back(cur);
+                    cur = "";
+                }
+            } else {
+                cur += c;
+            }
+        }
+
+        if (!cur.empty()) tokens.push_back(cur);
 }
