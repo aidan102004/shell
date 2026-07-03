@@ -11,6 +11,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <termios.h>
+#include "trie.h"
 
 namespace fs = std::__fs::filesystem;
 
@@ -28,6 +29,7 @@ std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd"
 };
 
+Trie builtin_trie;
 struct termios original_termios;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
@@ -66,6 +68,11 @@ int main() {
     std::cout << std::unitbuf;
     std::cerr << std::unitbuf;
     std::string command;
+
+    //populate trie
+    for (const auto& cmd : commands) {
+        builtin_trie.insert(static_cast<std::string>(cmd));
+    }
 
     while (true) {
         std::cout << "$ ";
@@ -231,6 +238,9 @@ std::string read_input() {
         else if (c == '\t')
         { 
             std::string s = completion(input);
+            if (s != input) {
+                input = s;
+            }
         }
         else if (c == 127) {
             if (!input.empty()) {
@@ -246,7 +256,16 @@ std::string read_input() {
 }
 
 std::string completion(std::string cur_input) {
-    //todo
+    if (cur_input.empty()) return cur_input;
+
+    std::string completed = builtin_trie.complete(cur_input);
+
+    if (!completed.empty()) {
+        std::string suffix = completed.substr(cur_input.size());
+        std::cout << suffix << " " << std::flush;
+        return completed + " ";
+    }
+    return cur_input;
 }
 
 void parse(const std::string& command, std::vector<std::string>& tokens) {
