@@ -54,18 +54,18 @@ void restore_fd(int fd_num, int saved_fd) {
 }
 
 void disable_raw() {
-    tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios);
+    tcsetattr(STDIN_FILENO, TCSAFLUSH, &original_termios); //restores terminal to canonical settings 
 }
 void enable_raw() {
-    tcgetattr(STDIN_FILENO, &original_termios);
-    atexit(disable_raw);
-    struct termios raw = original_termios;
-    raw.c_lflag &= ~(ECHO | ICANON);
-    tcsetattr(STDIN_FILENO, TCSANOW, &raw);
+    tcgetattr(STDIN_FILENO, &original_termios); //saves current terminal settings 
+    atexit(disable_raw); //when program exits run method
+    struct termios raw = original_termios; //create temp termios obejct
+    raw.c_lflag &= ~(ECHO | ICANON); //turn off echo and icanon flag, doesnt display keypresses, turns off line buffered input
+    tcsetattr(STDIN_FILENO, TCSANOW, &raw); //applies settings
 }
 
 int main() {
-    std::cout << std::unitbuf;
+    std::cout << std::unitbuf; //flush cout and cerr after every output
     std::cerr << std::unitbuf;
     std::string command;
 
@@ -77,14 +77,14 @@ int main() {
     while (true) {
         std::cout << "$ ";
         char c;
-        enable_raw();
-        std::string command = read_input();
+        enable_raw(); //swap from canonical to raw
+        std::string command = read_input(); //read input
         std::vector<std::string> tokens;
-        parse(command, tokens);
+        parse(command, tokens); //parse input
         if (tokens.empty()) continue;
 
-        std::string redirect_file = "";
-        int FLAG_CONST = O_TRUNC;
+        std::string redirect_file = ""; 
+        int FLAG_CONST = O_TRUNC; //default for file redirection
         std::string redirect_stderr = "";
         std::vector<std::string> clean_tokens;
 
@@ -94,7 +94,7 @@ int main() {
                 i++; // skip filename token too
             } else if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
                 redirect_file = tokens[i + 1];
-                FLAG_CONST = O_APPEND;
+                FLAG_CONST = O_APPEND; //change flag for append
                 i++; 
             }
             else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
@@ -102,7 +102,7 @@ int main() {
                 i++;
             } else if (tokens[i] == "2>>" && i + 1 <tokens.size()) {
                 redirect_stderr = tokens[i + 1];
-                FLAG_CONST = O_APPEND;
+                FLAG_CONST = O_APPEND; //change flag for append
                 i++;
             } 
             else {
@@ -233,11 +233,11 @@ void execute(const std::string& exe_path, const std::string& command,
 std::string read_input() {
     std::string input;
     char c;
-    while (read(STDIN_FILENO, &c, 1) > 0) {
-        if (c == '\n') { std::cout << '\n'; break; }
+    while (read(STDIN_FILENO, &c, 1) > 0) { //while input reading doesnt return 0 bytes
+        if (c == '\n') { std::cout << '\n'; break; } //enter
         else if (c == '\t')
         { 
-            std::string s = completion(input);
+            std::string s = completion(input); //on tab press check trie
             if (s != input) {
                 input = s;
             }
@@ -245,7 +245,7 @@ std::string read_input() {
         else if (c == 127) {
             if (!input.empty()) {
                 input.pop_back();
-                std::cout << "\b \b" << std::flush;
+                std::cout << "\b \b" << std::flush; //backspace
             }
         } else {
             input += c;
@@ -259,11 +259,10 @@ std::string completion(std::string cur_input) {
     if (cur_input.empty()) return cur_input;
 
     std::string completed = builtin_trie.complete(cur_input);
-
     if (!completed.empty()) {
-        std::string suffix = completed.substr(cur_input.size());
-        std::cout << suffix << " " << std::flush;
-        return completed + " ";
+        std::string suffix = completed.substr(cur_input.size()); //get suffix
+        std::cout << suffix << " " << std::flush; //append suffix to cl
+        return completed + " "; //return command
     }
     return cur_input;
 }
