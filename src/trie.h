@@ -8,8 +8,8 @@
 class Trie {
     public:
         Trie() = default;
-        void insert(const std::string& text);
-        std::string complete(const std::string& prefix) const;
+        void insert(const std::string &text);
+        std::string complete(const std::string &prefix) const;
     private:
         typedef struct trienode {
         std::array<std::unique_ptr<trienode>, 256> children{};
