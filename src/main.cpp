@@ -264,6 +264,7 @@ std::string completion(std::string cur_input) {
         std::cout << suffix << " " << std::flush; //append suffix to cl
         return completed + " "; //return command
     }
+    std::cout << "\x07" << std::flush;
     return cur_input;
 }
 
