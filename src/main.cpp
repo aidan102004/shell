@@ -23,6 +23,7 @@ void handle_cd(const std::string& arg);
 std::string read_input();
 std::string completion(std::string cur_input);
 void parse(const std::string& command, std::vector<std::string>& tokens);
+void populate_from_path();
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -73,7 +74,7 @@ int main() {
     for (const auto& cmd : commands) {
         builtin_trie.insert(static_cast<std::string>(cmd));
     }
-
+    populate_from_path();
     while (true) {
         std::cout << "$ ";
         char c;
@@ -306,4 +307,22 @@ void parse(const std::string& command, std::vector<std::string>& tokens) {
         }
 
         if (!cur.empty()) tokens.push_back(cur);
+}
+
+void populate_from_path() {
+    const char* p = std::getenv("PATH"); //gets val of path env variable
+    if (!p) return; //if nullptr return
+
+    std::stringstream ss(p); //read like a stream
+    std::string dir;
+    while (std::getline(ss, dir, ':')) { //insert into dir
+        if (dir.empty()) continue;
+        if (!fs::exists(dir)) continue; //check if exists
+
+        for (const auto &entry : fs::directory_iterator(dir)) { //loops through file and folders in the dir
+            if (fs::is_regular_file(entry) && access(entry.path().c_str(), X_OK) == 0) { //if file is executable
+                builtin_trie.insert(entry.path().string());
+            }
+        }
+    }
 }
