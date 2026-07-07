@@ -322,7 +322,7 @@ void populate_from_path() {
             for (const auto &entry : fs::directory_iterator(dir)) { //loops through file and folders in the dir
                 try {
                     if (fs::is_regular_file(entry) && access(entry.path().c_str(), X_OK) == 0) { //if file is executable
-                        builtin_trie.insert(entry.path().string());
+                        builtin_trie.insert(entry.path().filename().string());
                     }
                 } catch(...) {
                     continue;
