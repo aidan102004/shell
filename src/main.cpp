@@ -318,11 +318,18 @@ void populate_from_path() {
     while (std::getline(ss, dir, ':')) { //insert into dir
         if (dir.empty()) continue;
         if (!fs::exists(dir)) continue; //check if exists
-
-        for (const auto &entry : fs::directory_iterator(dir)) { //loops through file and folders in the dir
-            if (fs::is_regular_file(entry) && access(entry.path().c_str(), X_OK) == 0) { //if file is executable
-                builtin_trie.insert(entry.path().string());
-            }
+        try {
+            for (const auto &entry : fs::directory_iterator(dir)) { //loops through file and folders in the dir
+                try {
+                    if (fs::is_regular_file(entry) && access(entry.path().c_str(), X_OK) == 0) { //if file is executable
+                        builtin_trie.insert(entry.path().string());
+                    }
+                } catch(...) {
+                    continue;
+                }
+        }
+        } catch (...) {
+            continue;
         }
     }
 }
