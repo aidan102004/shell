@@ -1,8 +1,11 @@
 #include <stdio.h>
+#include <vector>
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
 #include "trie.h"
+
+constexpr int MAX_CHAR = 256;
 
 void Trie::insert(const std::string &text) {
     if (!root) root = std::make_unique<trienode>(); //if the true is empty create the root 
@@ -36,11 +39,36 @@ std::string Trie::complete(const std::string &prefix) const { //readonly method
                 next_char = i;
             }
         }
-
+        //todo add method returning all children if its ambigous 
         if (child_count != 1) return ""; //if its 0 or > 1 it means there is nothing to add or its ambigous 
         suffix += static_cast<char>(next_char); //append to the suffix
         node = node->children[next_char].get(); //point to child
     }
 
     return prefix + suffix; //return full word, could return only suffix but we compute in main
+}
+
+std::vector<std::string> Trie::get_children(const std::string &prefix) {
+    std::vector<std::string> res;
+    trienode *node = root.get();
+    if (!node) return res;
+
+    //walk to end of prefix
+    for (unsigned char c : prefix) {
+        if (!node->children[c]) return res;
+        node = node->children[c].get();
+    }
+    collect_all(node, prefix, res);
+    return res;
+}
+
+void Trie::collect_all(trienode *node, std::string cur, std::vector<std::string> &res) const {
+    if (node->terminal == true) {
+        res.push_back(cur);
+    }
+    for (int i = 0; i < MAX_CHAR; i++) {
+        if (node->children[i]) {
+            collect_all(node->children[i].get(), cur + static_cast<char>(i), res);
+        }
+    }
 }
