@@ -5,8 +5,6 @@
 #include <string.h>
 #include "trie.h"
 
-constexpr int MAX_CHAR = 256;
-
 void Trie::insert(const std::string &text) {
     if (!root) root = std::make_unique<trienode>(); //if the true is empty create the root 
 
@@ -50,25 +48,26 @@ std::string Trie::complete(const std::string &prefix) const { //readonly method
 
 std::vector<std::string> Trie::get_children(const std::string &prefix) {
     std::vector<std::string> res;
-    trienode *node = root.get();
-    if (!node) return res;
+    trienode *node = root.get(); //gets raw ptr to traverse
+    if (!node) return res; //if nullptr it is empty return 
 
     //walk to end of prefix
     for (unsigned char c : prefix) {
-        if (!node->children[c]) return res;
-        node = node->children[c].get();
+        if (!node->children[c]) return res; //prefix not in trie
+        node = node->children[c].get(); //points to next letter node
     }
-    collect_all(node, prefix, res);
+    collect_all(node, prefix, res); 
     return res;
 }
 
 void Trie::collect_all(trienode *node, std::string cur, std::vector<std::string> &res) const {
     if (node->terminal == true) {
-        res.push_back(cur);
+        res.push_back(cur); //save completed word
     }
-    for (int i = 0; i < MAX_CHAR; i++) {
+    for (int i = 0; i < MAX_CHAR; i++) { //loop through every possible child
         if (node->children[i]) {
-            collect_all(node->children[i].get(), cur + static_cast<char>(i), res);
+            //if child exists recursivly add it and increment cur
+            collect_all(node->children[i].get(), cur + static_cast<char>(i), res); 
         }
     }
 }

@@ -21,7 +21,7 @@ std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 std::string read_input();
-std::string completion(std::string cur_input);
+std::string completion(std::string cur_input, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
 void populate_from_path();
 
@@ -234,21 +234,26 @@ void execute(const std::string& exe_path, const std::string& command,
 std::string read_input() {
     std::string input;
     char c;
+    int tab_count = 0;
     while (read(STDIN_FILENO, &c, 1) > 0) { //while input reading doesnt return 0 bytes
         if (c == '\n') { std::cout << '\n'; break; } //enter
         else if (c == '\t')
         { 
-            std::string s = completion(input); //on tab press check trie
+            tab_count++;
+            std::string s = completion(input, tab_count); //on tab press check trie
             if (s != input) {
                 input = s;
+                tab_count = 0;
             }
         }
         else if (c == 127) {
+            tab_count = 0;
             if (!input.empty()) {
                 input.pop_back();
                 std::cout << "\b \b" << std::flush; //backspace
             }
         } else {
+            tab_count = 0;
             input += c;
             std::cout << c;
         }
@@ -256,16 +261,33 @@ std::string read_input() {
     return input;
 }
 
-std::string completion(std::string cur_input) {
+std::string completion(std::string cur_input, int tab_count) {
     if (cur_input.empty()) return cur_input;
 
-    std::string completed = builtin_trie.complete(cur_input);
-    if (!completed.empty()) {
-        std::string suffix = completed.substr(cur_input.size()); //get suffix
-        std::cout << suffix << " " << std::flush; //append suffix to cl
-        return completed + " "; //return command
+    std::vector<std::string> matches = builtin_trie.get_children(cur_input);
+    
+    if (matches.empty()) { //there are no matches
+        std::cout << "\x07" << std::flush;
+        return cur_input;
     }
-    std::cout << "\x07" << std::flush;
+    if (matches.size() == 1) { //complete as we have one match
+        std::string suffix = matches[0].substr(cur_input.size());
+        std::cout << suffix << " " << std::flush; //append suffix to cl
+        return matches[0] + " ";
+    }
+    
+    if (tab_count == 1) { //first tab press
+        std::cout << "\x07" << std::flush;
+        return cur_input;
+    }
+    //second tab press
+    std::sort(matches.begin(), matches.end()); //sort alphebetically
+    std::cout << "\n";
+    for (size_t i = 0; i < matches.size(); i++) { //print all possible completions 
+        if (i>0) std::cout << "  ";
+        std::cout << matches[i];
+    }
+    std::cout << "\n$" << cur_input <<std::flush; //reprint input
     return cur_input;
 }
 
