@@ -267,7 +267,18 @@ std::string completion(std::string cur_input, int tab_count) {
 
     std::vector<std::string> matches = builtin_trie.get_children(cur_input);
     
+    if (matches.empty()) {
+        std::cout << "\x07" << std::flush;
+        return cur_input;
+    }
+
     std::string lcp = longest_common_prefix(matches);
+
+    if (matches.size() == 1) {
+        std::string suffix = lcp.substr(cur_input.size());
+        std::cout << suffix << " " << std::flush;
+        return lcp + " ";
+    }
 
     if (lcp.size() > cur_input.size()) {
         std::string suffix = lcp.substr(cur_input.size());
@@ -369,5 +380,5 @@ std::string longest_common_prefix(const std::vector<std::string>& matches) {
         }
         lcp += c;
     }
-    return lcp + " ";
+    return lcp;
 }
