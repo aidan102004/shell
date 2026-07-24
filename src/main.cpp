@@ -24,6 +24,7 @@ std::string read_input();
 std::string completion(std::string cur_input, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
 void populate_from_path();
+std::string longest_common_prefix(const std::vector<std::string>& matches);
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -281,14 +282,11 @@ std::string completion(std::string cur_input, int tab_count) {
         return cur_input;
     }
     //second tab press
-    std::sort(matches.begin(), matches.end()); //sort alphebetically
-    std::cout << "\n";
-    for (size_t i = 0; i < matches.size(); i++) { //print all possible completions 
-        if (i>0) std::cout << "  ";
-        std::cout << matches[i];
-    }
-    std::cout << "\n$" << cur_input <<std::flush; //reprint input
-    return cur_input;
+    std::string lcp = longest_common_prefix(matches);
+    std::cout << "LCP" << lcp << std::endl;
+    std::string suffix = lcp.substr(cur_input.size());
+    std::cout << suffix << " " << std::flush;
+    return lcp;
 }
 
 void parse(const std::string& command, std::vector<std::string>& tokens) {
@@ -354,4 +352,23 @@ void populate_from_path() {
             continue;
         }
     }
+}
+
+std::string longest_common_prefix(const std::vector<std::string>& matches) {
+    if (matches.empty()) return "";
+    if (matches.size() == 1) return matches[0];
+
+    std::string lcp = "";
+    for (size_t i = 0; i < matches[0].size(); i++) {
+        char c = matches[0][i];
+
+        for (size_t j = 1; j < matches.size(); j++) {
+            if (i >= matches[j].size() || matches[j][i] != c) {
+                return lcp;
+            }
+        }
+        lcp += c;
+        std::cout << lcp << std::endl;
+    }
+    return lcp;
 }
