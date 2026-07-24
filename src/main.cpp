@@ -267,26 +267,27 @@ std::string completion(std::string cur_input, int tab_count) {
 
     std::vector<std::string> matches = builtin_trie.get_children(cur_input);
     
-    if (matches.empty()) { //there are no matches
-        std::cout << "\x07" << std::flush;
-        return cur_input;
-    }
-    if (matches.size() == 1) { //complete as we have one match
-        std::string suffix = matches[0].substr(cur_input.size());
-        std::cout << suffix << " " << std::flush; //append suffix to cl
-        return matches[0] + " ";
-    }
-    
-    if (tab_count == 1) { //first tab press
-        std::cout << "\x07" << std::flush;
-        return cur_input;
-    }
-    //second tab press
     std::string lcp = longest_common_prefix(matches);
-    std::cout << "LCP" << lcp << std::endl;
-    std::string suffix = lcp.substr(cur_input.size());
-    std::cout << suffix << " " << std::flush;
-    return lcp;
+
+    if (lcp.size() > cur_input.size()) {
+        std::string suffix = lcp.substr(cur_input.size());
+        std::cout << suffix << std::flush;
+        return lcp;
+    }
+
+    if (tab_count == 1) {
+        std::cout << "\x07" << std::flush;
+        return cur_input;
+    }
+
+    std::sort(matches.begin(), matches.end());
+    std::cout << "\n";
+    for (size_t i = 0; i < matches.size(); i++) {
+        if (i > 0) std::cout << "  ";
+        std::cout << matches[i];
+    }
+    std::cout << "\n$ " << cur_input << std::flush;
+    return cur_input;
 }
 
 void parse(const std::string& command, std::vector<std::string>& tokens) {
@@ -357,7 +358,6 @@ void populate_from_path() {
 std::string longest_common_prefix(const std::vector<std::string>& matches) {
     if (matches.empty()) return "";
     if (matches.size() == 1) return matches[0];
-
     std::string lcp = "";
     for (size_t i = 0; i < matches[0].size(); i++) {
         char c = matches[0][i];
@@ -368,7 +368,6 @@ std::string longest_common_prefix(const std::vector<std::string>& matches) {
             }
         }
         lcp += c;
-        std::cout << lcp << std::endl;
     }
-    return lcp;
+    return lcp + " ";
 }
