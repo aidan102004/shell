@@ -21,10 +21,11 @@ std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 std::string read_input();
-std::string completion(std::string cur_input, int tab_count);
+std::string completion(Trie& trie, std::string cur_input, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
 void populate_from_path();
 std::string longest_common_prefix(const std::vector<std::string>& matches);
+void populate_files();
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -32,6 +33,7 @@ std::unordered_set<std::string> commands = {
 };
 
 Trie builtin_trie;
+Trie filename_trie;
 struct termios original_termios;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
@@ -76,6 +78,7 @@ int main() {
         builtin_trie.insert(static_cast<std::string>(cmd));
     }
     populate_from_path();
+    populate_files();
     while (true) {
         std::cout << "$ ";
         char c;
@@ -240,8 +243,17 @@ std::string read_input() {
         if (c == '\n') { std::cout << '\n'; break; } //enter
         else if (c == '\t')
         { 
-            tab_count++;
-            std::string s = completion(input, tab_count); //on tab press check trie
+            std::string s = "";
+            if (input.find(' ') != std::string::npos) {
+                size_t pos = input.find(' ');
+                std::string arg = input.substr(pos + 1);
+                s = completion(filename_trie, arg, tab_count);
+                s = input.substr(0, pos) + " " + s;
+                
+            } else {
+                tab_count++;
+                s = completion(builtin_trie, input, tab_count); //on tab press check trie
+            }
             if (s != input) {
                 input = s;
                 tab_count = 0;
@@ -262,11 +274,10 @@ std::string read_input() {
     return input;
 }
 
-std::string completion(std::string cur_input, int tab_count) {
+std::string completion(Trie& trie, std::string cur_input, int tab_count) {
     if (cur_input.empty()) return cur_input;
 
-    std::vector<std::string> matches = builtin_trie.get_children(cur_input);
-    
+    std::vector<std::string> matches = trie.get_children(cur_input);
     if (matches.empty()) {
         std::cout << "\x07" << std::flush;
         return cur_input;
@@ -381,4 +392,12 @@ std::string longest_common_prefix(const std::vector<std::string>& matches) {
         lcp += c;
     }
     return lcp;
+}
+
+void populate_files() {
+    for (const auto &entry : fs::directory_iterator(fs::current_path())) {
+        if (fs::is_regular_file(entry)) {
+            filename_trie.insert(entry.path().filename().string());
+        }
+    }
 }
