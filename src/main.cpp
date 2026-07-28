@@ -247,6 +247,11 @@ std::string read_input() {
             if (input.find(' ') != std::string::npos) {
                 size_t pos = input.find(' ');
                 std::string arg = input.substr(pos + 1);
+                if (arg.find('/') != std::string::npos) {
+                    size_t dir_path_pos = arg.find('/');
+                    std::string dir_path = arg.substr(0, pos);
+                    std::string pref_to_match = arg.substr(pos + 1);
+                }
                 s = completion(filename_trie, arg, tab_count);
                 s = input.substr(0, pos) + " " + s;
                 
