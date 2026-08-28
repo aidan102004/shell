@@ -26,6 +26,7 @@ void parse(const std::string& command, std::vector<std::string>& tokens);
 void populate_from_path();
 std::string longest_common_prefix(const std::vector<std::string>& matches);
 void populate_files();
+std::string path_completion(const std::string& s, size_t s_pos);
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -247,16 +248,16 @@ std::string read_input() {
             if (input.find(' ') != std::string::npos) {
                 size_t pos = input.find(' ');
                 std::string arg = input.substr(pos + 1);
-                if (arg.find('/') != std::string::npos) {
-                    size_t dir_path_pos = arg.find('/');
-                    std::string dir_path = arg.substr(0, pos);
-                    std::string pref_to_match = arg.substr(pos + 1);
+                if (arg.rfind('/') != std::string::npos) {
+                    size_t slash_pos = arg.rfind('/');
+                    s = path_completion(arg, slash_pos);
+                } else {
+                    s = completion(filename_trie, arg, tab_count);
                 }
-                s = completion(filename_trie, arg, tab_count);
                 s = input.substr(0, pos) + " " + s;
                 
             } else {
-                tab_count++;
+                tab_count++; 
                 s = completion(builtin_trie, input, tab_count); //on tab press check trie
             }
             if (s != input) {
@@ -405,4 +406,27 @@ void populate_files() {
             filename_trie.insert(entry.path().filename().string());
         }
     }
+}
+
+std::string path_completion(const std::string& s, size_t s_pos)  
+{
+    std::string dir_path = s.substr(0, s_pos + 1);
+    std::string prefix = s.substr(s_pos + 1);
+    std::vector<std::string> matches;
+    try {
+        for (const auto& entry : fs::directory_iterator(dir_path)) {
+            std::string name = entry.path().filename().string();
+            if (name.rfind(prefix, 0) == 0) matches.push_back(name);
+        }
+
+    } catch(...) {}
+    if (matches.size() == 1) {
+        std::string full_path = dir_path + matches[0];
+        std::string suffix = matches[0].substr(prefix.size() + 1);
+        std::cout << suffix << " " << std::flush;
+        return full_path + " ";
+    }
+
+    std::cout << "\x07" << std::flush;
+    return s;
 }
