@@ -422,7 +422,7 @@ std::string path_completion(const std::string& s, size_t s_pos)
     } catch(...) {}
     if (matches.size() == 1) {
         std::string full_path = dir_path + matches[0];
-        std::string suffix = matches[0].substr(prefix.size() + 1);
+        std::string suffix = matches[0].substr(prefix.size());
         std::cout << suffix << " " << std::flush;
         return full_path + " ";
     }
