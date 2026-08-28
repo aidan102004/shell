@@ -249,8 +249,8 @@ std::string read_input() {
                 size_t pos = input.find(' ');
                 std::string arg = input.substr(pos + 1);
                 if (arg.rfind('/') != std::string::npos) {
-                    size_t slash_pos = arg.rfind('/');
-                    s = path_completion(arg, slash_pos);
+                    size_t slash_pos = arg.rfind('/'); //position of the slash
+                    s = path_completion(arg, slash_pos); // this method returns the string of the completed path
                 } else {
                     s = completion(filename_trie, arg, tab_count);
                 }
@@ -410,18 +410,19 @@ void populate_files() {
 
 std::string path_completion(const std::string& s, size_t s_pos)  
 {
-    std::string dir_path = s.substr(0, s_pos + 1);
-    std::string prefix = s.substr(s_pos + 1);
+    std::string dir_path = s.substr(0, s_pos + 1); //returns the directory path before the last /
+    std::string prefix = s.substr(s_pos + 1); //whatever is after the slash
     std::vector<std::string> matches;
     try {
         for (const auto& entry : fs::directory_iterator(dir_path)) {
-            std::string name = entry.path().filename().string();
-            if (name.rfind(prefix, 0) == 0) matches.push_back(name);
+            std::string name = entry.path().filename().string(); //every file in that directory
+            if (name.rfind(prefix, 0) == 0) matches.push_back(name); //if the prefix exists in name add to matches
         }
 
     } catch(...) {}
+    //if we have one match
     if (matches.size() == 1) {
-        std::string full_path = dir_path + matches[0];
+        std::string full_path = dir_path + matches[0]; 
         std::string suffix = matches[0].substr(prefix.size());
         std::cout << suffix << " " << std::flush;
         return full_path + " ";
