@@ -21,12 +21,12 @@ std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 std::string read_input();
-std::string completion(Trie& trie, std::string cur_input, int tab_count);
+std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
 void populate_from_path();
 std::string longest_common_prefix(const std::vector<std::string>& matches);
 void populate_files();
-std::string path_completion(const std::string& s, size_t s_pos);
+std::string path_completion(const std::string& s, const std::string& full_line, size_t s_pos, int tab_count);
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -249,16 +249,18 @@ std::string read_input() {
                 size_t pos = input.find(' ');
                 std::string arg = input.substr(pos + 1);
                 if (arg.rfind('/') != std::string::npos) {
+                    tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
-                    s = path_completion(arg, slash_pos); // this method returns the string of the completed path
+                    s = path_completion(arg, input, slash_pos, tab_count); // this method returns the string of the completed path
                 } else {
-                    s = completion(filename_trie, arg, tab_count);
+                    tab_count++;
+                    s = completion(filename_trie, arg, input, tab_count);
                 }
                 s = input.substr(0, pos) + " " + s;
                 
             } else {
                 tab_count++; 
-                s = completion(builtin_trie, input, tab_count); //on tab press check trie
+                s = completion(builtin_trie, input, input, tab_count); //on tab press check trie
             }
             if (s != input) {
                 input = s;
@@ -280,7 +282,7 @@ std::string read_input() {
     return input;
 }
 
-std::string completion(Trie& trie, std::string cur_input, int tab_count) {
+std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count) {
     //if (cur_input.empty()) return cur_input;
 
     std::vector<std::string> matches = trie.get_children(cur_input);
@@ -315,7 +317,7 @@ std::string completion(Trie& trie, std::string cur_input, int tab_count) {
         if (i > 0) std::cout << "  ";
         std::cout << matches[i];
     }
-    std::cout << "\n$ " << cur_input << std::flush;
+    std::cout << "\n$ " << full_line << std::flush;
     return cur_input;
 }
 
@@ -409,7 +411,7 @@ void populate_files() {
     }
 }
 
-std::string path_completion(const std::string& s, size_t s_pos)  
+std::string path_completion(const std::string& s, const std::string& full_line, size_t s_pos, int tab_count)  
 {
     std::string dir_path = s.substr(0, s_pos + 1); //returns the directory path before the last /
     std::string prefix = s.substr(s_pos + 1); //whatever is after the slash
@@ -429,7 +431,25 @@ std::string path_completion(const std::string& s, size_t s_pos)
         std::cout << suffix << trailing_char << std::flush;
         return full_path + trailing_char;
     }
+    std::string lcp = longest_common_prefix(matches);
+    if (lcp.size() > prefix.size())
+    {
+        std::string suffix = lcp.substr(prefix.size());
+        std::cout << suffix << " " << std::flush;
+        return lcp;
+    }
+    if (tab_count == 1) {
+        std::cout << "\x07" << std::flush;
+        return s;
+    }
 
-    std::cout << "\x07" << std::flush;
+    std::sort(matches.begin(), matches.end());
+    std::cout << "\n";
+    for (size_t i = 0; i < matches.size(); i++) {
+        if (i > 0) std::cout << "  ";
+        std::cout << matches[i];
+    }
+    std::cout << "\n$ " << full_line << std::flush;
     return s;
 }
+
