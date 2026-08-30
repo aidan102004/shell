@@ -1,6 +1,7 @@
 #include <iostream>
 #include <string>
 #include <unordered_set>
+#include <unordered_map>
 #include <cstdlib>
 #include <vector>
 #include <sstream>
@@ -20,6 +21,8 @@ void handle_type(const std::string& arg, const std::unordered_set<std::string>& 
 std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
+void handle_complete_builtin(std::vector<std::string>& args);
+std::string run_completer(const fs::path& script, const std::string curr_arg);
 std::string read_input();
 std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
@@ -30,8 +33,10 @@ std::string path_completion(const std::string& s, const std::string& full_line, 
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
-    "echo", "exit", "type", "pwd", "cd"
+    "echo", "exit", "type", "pwd", "cd", "complete"
 };
+
+std::unordered_map<std::string, fs::directory_entry> complete_paths;
 
 Trie builtin_trie;
 Trie filename_trie;
@@ -145,6 +150,8 @@ int main() {
             restore_fd(STDERR_FILENO, saved_err);
         } else if (cmd == "cd") {
             handle_cd(clean_tokens.size() > 1 ? clean_tokens[1] : "");
+        } else if (cmd == "complete" ){
+            handle_complete_builtin(clean_tokens);
         } else {
             execute(find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr, FLAG_CONST);
         }
@@ -178,6 +185,57 @@ void handle_cd(const std::string& arg) {
     if (chdir(path) != 0) {
         std::cerr << "cd: " << path << ": No such file or directory" << std::endl;
     }
+}
+
+void handle_complete_builtin(std::vector<std::string>& args) {
+    std::string flag = args[1];
+    fs::directory_entry path(args[2]);
+    std::string cmd = args.back();
+    if (flag == "-C") {
+        complete_paths[cmd] = path;
+    } else if (flag == "-p") {
+        auto it = complete_paths.find(cmd);
+        if (it != complete_paths.end()) {
+            std::cout << "complete -C '" << it->second.path().string() << "' " << cmd << std::endl; 
+        } else {
+            std::cout << "complete: " << cmd << ": no completion specification" << std::endl;
+        }
+    }
+}
+
+std::string run_completer(const fs::path& script, const std::string curr_arg) {
+    int fds[2], nbytes, status; //create a 2 element array that pipe() will fill in with read and write, nbytes will hold read value
+
+    if (pipe(fds) == -1) { //create pipeline
+        perror("pipe");
+        return curr_arg; //return unchanged arg if there is an error
+    }
+    pid_t pid = fork(); //duplicates the entire current process 
+    if (pid == -1) {
+        perror("fork");
+        return curr_arg;
+    }
+    if (pid == 0) { //child process
+        close(fds[0]); //child process doesnt need to read
+        dup2(fds[1], STDOUT_FILENO); //redirect stdout to fds[1]
+        close(fds[1]); //close write
+        execl(script.c_str(), script.c_str(), nullptr); //replace child process with the script
+        perror("execvp");
+        _exit(1);
+    } 
+    //parent process
+    close(fds[1]); //close write
+    char inbuf[256]; //fixed raw buffer to recieve chunks of data from pipe 256 bytes at a time
+    std::string output;
+    while ((nbytes = read(fds[0], inbuf, sizeof(inbuf))) > 0) //read loop, read function returns num of bytes written into inbuf
+        output.append(inbuf, nbytes); //append the chars specified by nbytes
+
+    while (!output.empty() && (output.back() == '\n' || output.back() == '\r')) 
+        output.pop_back(); //remove trailing whitespace
+    close(fds[0]); //close read
+    waitpid(pid, &status, 0); 
+    return output;
+
 }
 
 std::string find_path(const std::string& arg) {
@@ -246,8 +304,14 @@ std::string read_input() {
         { 
             std::string s = "";
             if (input.find(' ') != std::string::npos) {
-                size_t pos = input.find(' ');
+                size_t pos = input.rfind(' ');
                 std::string arg = input.substr(pos + 1);
+                std::string command_name = input.substr(0, pos);
+                auto it = complete_paths.find(command_name);
+                if (it != complete_paths.end())
+                    s = run_completer(complete_paths[command_name].path(), arg);
+                    std::cout << s << " " << std::flush;
+
                 if (arg.rfind('/') != std::string::npos) {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
@@ -315,7 +379,7 @@ std::string completion(Trie& trie, std::string cur_input, const std::string& ful
     std::cout << "\n";
     for (size_t i = 0; i < matches.size(); i++) {
         if (i > 0) std::cout << "  ";
-        std::cout << matches[i];
+        std::cout << matches[i] << (fs::is_directory(matches[i]) ? "/" : "");
     }
     std::cout << "\n$ " << full_line << std::flush;
     return cur_input;
@@ -435,7 +499,7 @@ std::string path_completion(const std::string& s, const std::string& full_line, 
     if (lcp.size() > prefix.size())
     {
         std::string suffix = lcp.substr(prefix.size());
-        std::cout << suffix << " " << std::flush;
+        std::cout << suffix << std::flush;
         return lcp;
     }
     if (tab_count == 1) {
@@ -447,7 +511,7 @@ std::string path_completion(const std::string& s, const std::string& full_line, 
     std::cout << "\n";
     for (size_t i = 0; i < matches.size(); i++) {
         if (i > 0) std::cout << "  ";
-        std::cout << matches[i];
+        std::cout << matches[i] << (fs::is_directory(matches[i]) ? "/" : "");
     }
     std::cout << "\n$ " << full_line << std::flush;
     return s;
