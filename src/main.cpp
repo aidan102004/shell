@@ -22,7 +22,8 @@ std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 void handle_complete_builtin(std::vector<std::string>& args);
-std::string run_completer(const fs::path& script, const std::string curr_arg);
+std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input);
+std::string execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word);
 std::string read_input();
 std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
@@ -202,24 +203,41 @@ void handle_complete_builtin(std::vector<std::string>& args) {
         }
     }
 }
-
-std::string run_completer(const fs::path& script, const std::string curr_arg) {
+std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input) 
+{
+    std::string before_curr = full_input.substr(0, full_input.rfind(' '));
+    size_t second_last_space = before_curr.rfind(' ');
+    std::string prev_word;
+    if (second_last_space != std::string::npos) {
+        prev_word = before_curr.substr(second_last_space + 1);
+    } else {
+        prev_word = "";
+    }
+    std::string candidate = execute_completer(script, command, curr_word, prev_word);
+    if (candidate == curr_word) { //if we return with no completions
+        std::cout << "\x07" << std::flush;
+    } else {
+        std::cout << candidate.substr(curr_word.size()) << " " << std::flush;  
+    }
+    return candidate;
+}
+std::string execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word) {
     int fds[2], nbytes, status; //create a 2 element array that pipe() will fill in with read and write, nbytes will hold read value
 
     if (pipe(fds) == -1) { //create pipeline
         perror("pipe");
-        return curr_arg; //return unchanged arg if there is an error
+        return curr_word; //return unchanged arg if there is an error
     }
     pid_t pid = fork(); //duplicates the entire current process 
     if (pid == -1) {
         perror("fork");
-        return curr_arg;
+        return curr_word;
     }
     if (pid == 0) { //child process
         close(fds[0]); //child process doesnt need to read
         dup2(fds[1], STDOUT_FILENO); //redirect stdout to fds[1]
         close(fds[1]); //close write
-        execl(script.c_str(), script.c_str(), nullptr); //replace child process with the script
+        execl(script.c_str(), script.c_str(), command.c_str(), curr_word.c_str(), prev_word.c_str(), nullptr); //replace child process with the script
         perror("execvp");
         _exit(1);
     } 
@@ -234,7 +252,7 @@ std::string run_completer(const fs::path& script, const std::string curr_arg) {
         output.pop_back(); //remove trailing whitespace
     close(fds[0]); //close read
     waitpid(pid, &status, 0); 
-    return output;
+    return output.empty() ? curr_word : output;
 
 }
 
@@ -306,13 +324,12 @@ std::string read_input() {
             if (input.find(' ') != std::string::npos) {
                 size_t pos = input.rfind(' ');
                 std::string arg = input.substr(pos + 1);
-                std::string command_name = input.substr(0, pos);
+                std::string command_name = input.substr(0, input.find(' '));
                 auto it = complete_paths.find(command_name);
-                if (it != complete_paths.end())
-                    s = run_completer(complete_paths[command_name].path(), arg);
-                    std::cout << s << " " << std::flush;
-
-                if (arg.rfind('/') != std::string::npos) {
+                if (it != complete_paths.end()) {
+                    //handle case where the is custom complete specification for a cmd
+                    s = run_completer(complete_paths[command_name].path(), command_name, arg, input); //run completer
+                } else if (arg.rfind('/') != std::string::npos) {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
                     s = path_completion(arg, input, slash_pos, tab_count); // this method returns the string of the completed path
