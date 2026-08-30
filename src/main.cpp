@@ -281,7 +281,7 @@ std::string read_input() {
 }
 
 std::string completion(Trie& trie, std::string cur_input, int tab_count) {
-    if (cur_input.empty()) return cur_input;
+    //if (cur_input.empty()) return cur_input;
 
     std::vector<std::string> matches = trie.get_children(cur_input);
     if (matches.empty()) {
@@ -293,8 +293,9 @@ std::string completion(Trie& trie, std::string cur_input, int tab_count) {
 
     if (matches.size() == 1) {
         std::string suffix = lcp.substr(cur_input.size());
-        std::cout << suffix << " " << std::flush;
-        return lcp + " ";
+        char trailing_char = fs::is_directory(lcp) ? '/' : ' ';
+        std::cout << suffix << trailing_char << std::flush;
+        return lcp + trailing_char;
     }
 
     if (lcp.size() > cur_input.size()) {
@@ -402,7 +403,7 @@ std::string longest_common_prefix(const std::vector<std::string>& matches) {
 
 void populate_files() {
     for (const auto &entry : fs::directory_iterator(fs::current_path())) {
-        if (fs::is_regular_file(entry)) {
+        if (fs::is_regular_file(entry) || fs::is_directory(entry)) {
             filename_trie.insert(entry.path().filename().string());
         }
     }
@@ -424,8 +425,9 @@ std::string path_completion(const std::string& s, size_t s_pos)
     if (matches.size() == 1) {
         std::string full_path = dir_path + matches[0]; 
         std::string suffix = matches[0].substr(prefix.size());
-        std::cout << suffix << " " << std::flush;
-        return full_path + " ";
+        char trailing_char = fs::is_directory(full_path) ? '/' : ' ';
+        std::cout << suffix << trailing_char << std::flush;
+        return full_path + trailing_char;
     }
 
     std::cout << "\x07" << std::flush;
