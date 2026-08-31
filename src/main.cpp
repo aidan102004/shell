@@ -17,6 +17,7 @@
 namespace fs = std::__fs::filesystem;
 
 // Forward declarations
+pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens);
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
 std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
@@ -35,7 +36,7 @@ std::string matches_helper(std::vector<std::string>& matches, const std::string&
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
-    "echo", "exit", "type", "pwd", "cd", "complete"
+    "echo", "exit", "type", "pwd", "cd", "complete", "jobs"
 };
 
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
@@ -117,8 +118,10 @@ int main() {
                 redirect_stderr = tokens[i + 1];
                 FLAG_CONST = O_APPEND; //change flag for append
                 i++;
-            } 
-            else {
+            } else if (tokens[i] == "&") {
+                tokens.pop_back();
+                bg_job(clean_tokens[0], tokens);
+            } else {
                 clean_tokens.push_back(tokens[i]);
             }
         }
@@ -154,12 +157,56 @@ int main() {
             handle_cd(clean_tokens.size() > 1 ? clean_tokens[1] : "");
         } else if (cmd == "complete" ){
             handle_complete_builtin(clean_tokens);
+        } else if (cmd == "jobs") {
+            std::cout << "jobs is a builtin" << std::endl;
         } else {
             execute(find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr, FLAG_CONST);
         }
     }
 
     return 0;
+}
+
+pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens){
+    std::vector<char*> argv;
+    for (auto& t : tokens) {
+        argv.push_back(const_cast<char*>(t.c_str()));
+    }
+    argv.push_back(nullptr);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        perror("fork");
+        return pid;
+    }
+
+    if (pid == 0) {
+        pid_t pid1 = fork();
+        if (pid1 < 0) {
+            perror("fork");
+            return pid1;
+        }
+        if (pid1 > 0) {
+            exit(0);
+        }
+        if (pid1 == 0) { 
+            int dev_null = open("dev/null", O_RDWR); 
+
+            if (dev_null >= 0) {
+                dup2(dev_null, STDIN_FILENO);
+                dup2(dev_null, STDOUT_FILENO);
+                dup2(dev_null, STDERR_FILENO);
+                
+                close(dev_null); 
+            }
+
+            char *args[] = {"/bin/sleep", "10", NULL};
+            execv(args[0], args);
+            exit(1);
+        }
+    }
+    std::cout << "parent process" << std::endl;
+    return pid;
 }
 
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins) {
