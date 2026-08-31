@@ -202,6 +202,8 @@ void handle_complete_builtin(std::vector<std::string>& args) {
         } else {
             std::cout << "complete: " << cmd << ": no completion specification" << std::endl;
         }
+    } else if (flag == "-r") {
+        complete_paths.erase(cmd);
     }
 }
 std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input, int tab_count) 
@@ -209,13 +211,15 @@ std::string run_completer(const fs::path& script, const std::string& command, co
     std::string before_curr = full_input.substr(0, full_input.rfind(' '));
     size_t second_last_space = before_curr.rfind(' ');
     std::string prev_word;
-    if (second_last_space != std::string::npos) {
+
+    if (curr_word.empty()) {
+        prev_word = "";
+    } else if (second_last_space != std::string::npos) {
         prev_word = before_curr.substr(second_last_space + 1);
     } else {
-        prev_word = "";
+        prev_word = before_curr;   
     }
     std::vector<std::string> candidates = execute_completer(script, command, curr_word, prev_word, full_input);
-
     return matches_helper(candidates, curr_word, full_input, tab_count);
 }
 std::vector<std::string> execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word, const std::string& f_in) {
@@ -487,7 +491,7 @@ std::string path_completion(const std::string& s, const std::string& full_line, 
 std::string matches_helper(std::vector<std::string>& matches, const std::string& cur_input,
                              const std::string& full_input, int tab_count, const std::string& dir_path) {
 
-    if (matches.empty()) {
+    if (matches.empty()) { 
         std::cout << "\x07" << std::flush;
         return dir_path + cur_input;
     }
