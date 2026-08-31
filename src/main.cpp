@@ -22,8 +22,8 @@ std::string find_path(const std::string& arg);
 void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 void handle_complete_builtin(std::vector<std::string>& args);
-std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input);
-std::string execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word);
+std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input, int tab_count);
+std::vector<std::string> execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word, const std::string& f_in);
 std::string read_input();
 std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
@@ -31,6 +31,7 @@ void populate_from_path();
 std::string longest_common_prefix(const std::vector<std::string>& matches);
 void populate_files();
 std::string path_completion(const std::string& s, const std::string& full_line, size_t s_pos, int tab_count);
+std::string matches_helper(std::vector<std::string>& matches, const std::string& cur_input, const std::string& full_input, int tab_count, const std::string& dir_path ="");
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -203,7 +204,7 @@ void handle_complete_builtin(std::vector<std::string>& args) {
         }
     }
 }
-std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input) 
+std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input, int tab_count) 
 {
     std::string before_curr = full_input.substr(0, full_input.rfind(' '));
     size_t second_last_space = before_curr.rfind(' ');
@@ -213,27 +214,28 @@ std::string run_completer(const fs::path& script, const std::string& command, co
     } else {
         prev_word = "";
     }
-    std::string candidate = execute_completer(script, command, curr_word, prev_word);
-    if (candidate == curr_word) { //if we return with no completions
-        std::cout << "\x07" << std::flush;
-    } else {
-        std::cout << candidate.substr(curr_word.size()) << " " << std::flush;  
-    }
-    return candidate;
+    std::vector<std::string> candidates = execute_completer(script, command, curr_word, prev_word, full_input);
+
+    return matches_helper(candidates, curr_word, full_input, tab_count);
 }
-std::string execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word) {
+std::vector<std::string> execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word, const std::string& f_in) {
     int fds[2], nbytes, status; //create a 2 element array that pipe() will fill in with read and write, nbytes will hold read value
+    std::vector<std::string> res;
 
     if (pipe(fds) == -1) { //create pipeline
         perror("pipe");
-        return curr_word; //return unchanged arg if there is an error
+        res.push_back(curr_word);
+        return res; //return unchanged arg if there is an error
     }
     pid_t pid = fork(); //duplicates the entire current process 
     if (pid == -1) {
         perror("fork");
-        return curr_word;
+        res.push_back(curr_word);
+        return res;
     }
     if (pid == 0) { //child process
+        setenv("COMP_LINE", f_in.c_str(), 1);
+        setenv("COMP_POINT", std::to_string(f_in.size()).c_str(), 1);
         close(fds[0]); //child process doesnt need to read
         dup2(fds[1], STDOUT_FILENO); //redirect stdout to fds[1]
         close(fds[1]); //close write
@@ -248,11 +250,14 @@ std::string execute_completer(const fs::path& script, const std::string& command
     while ((nbytes = read(fds[0], inbuf, sizeof(inbuf))) > 0) //read loop, read function returns num of bytes written into inbuf
         output.append(inbuf, nbytes); //append the chars specified by nbytes
 
-    while (!output.empty() && (output.back() == '\n' || output.back() == '\r')) 
-        output.pop_back(); //remove trailing whitespace
+    std::stringstream ss(output);
+    std::string word;
+    while (ss >> word) {
+        res.push_back(word);
+    }
     close(fds[0]); //close read
     waitpid(pid, &status, 0); 
-    return output.empty() ? curr_word : output;
+    return res;
 
 }
 
@@ -328,16 +333,19 @@ std::string read_input() {
                 auto it = complete_paths.find(command_name);
                 if (it != complete_paths.end()) {
                     //handle case where the is custom complete specification for a cmd
-                    s = run_completer(complete_paths[command_name].path(), command_name, arg, input); //run completer
+                    tab_count++;
+                    s = run_completer(complete_paths[command_name].path(), command_name, arg, input, tab_count); //run completer
                 } else if (arg.rfind('/') != std::string::npos) {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
                     s = path_completion(arg, input, slash_pos, tab_count); // this method returns the string of the completed path
+                    //std::cout << " full path " << s << std::endl;
                 } else {
                     tab_count++;
                     s = completion(filename_trie, arg, input, tab_count);
                 }
                 s = input.substr(0, pos) + " " + s;
+                //std::cout << "value of s " << s << std::endl;
                 
             } else {
                 tab_count++; 
@@ -367,39 +375,7 @@ std::string completion(Trie& trie, std::string cur_input, const std::string& ful
     //if (cur_input.empty()) return cur_input;
 
     std::vector<std::string> matches = trie.get_children(cur_input);
-    if (matches.empty()) {
-        std::cout << "\x07" << std::flush;
-        return cur_input;
-    }
-
-    std::string lcp = longest_common_prefix(matches);
-
-    if (matches.size() == 1) {
-        std::string suffix = lcp.substr(cur_input.size());
-        char trailing_char = fs::is_directory(lcp) ? '/' : ' ';
-        std::cout << suffix << trailing_char << std::flush;
-        return lcp + trailing_char;
-    }
-
-    if (lcp.size() > cur_input.size()) {
-        std::string suffix = lcp.substr(cur_input.size());
-        std::cout << suffix << std::flush;
-        return lcp;
-    }
-
-    if (tab_count == 1) {
-        std::cout << "\x07" << std::flush;
-        return cur_input;
-    }
-
-    std::sort(matches.begin(), matches.end());
-    std::cout << "\n";
-    for (size_t i = 0; i < matches.size(); i++) {
-        if (i > 0) std::cout << "  ";
-        std::cout << matches[i] << (fs::is_directory(matches[i]) ? "/" : "");
-    }
-    std::cout << "\n$ " << full_line << std::flush;
-    return cur_input;
+    return matches_helper(matches, cur_input, full_line, tab_count);
 }
 
 void parse(const std::string& command, std::vector<std::string>& tokens) {
@@ -504,33 +480,44 @@ std::string path_completion(const std::string& s, const std::string& full_line, 
         }
 
     } catch(...) {}
-    //if we have one match
-    if (matches.size() == 1) {
-        std::string full_path = dir_path + matches[0]; 
-        std::string suffix = matches[0].substr(prefix.size());
-        char trailing_char = fs::is_directory(full_path) ? '/' : ' ';
-        std::cout << suffix << trailing_char << std::flush;
-        return full_path + trailing_char;
+    
+    return matches_helper(matches, prefix, full_line, tab_count, dir_path);
+}
+
+std::string matches_helper(std::vector<std::string>& matches, const std::string& cur_input,
+                             const std::string& full_input, int tab_count, const std::string& dir_path) {
+
+    if (matches.empty()) {
+        std::cout << "\x07" << std::flush;
+        return dir_path + cur_input;
     }
     std::string lcp = longest_common_prefix(matches);
-    if (lcp.size() > prefix.size())
-    {
-        std::string suffix = lcp.substr(prefix.size());
-        std::cout << suffix << std::flush;
-        return lcp;
+    if (matches.size() == 1) {
+        std::string suffix = lcp.substr(cur_input.size());
+        std::string full = dir_path + lcp;
+        char trailing_char = fs::is_directory(full) ? '/' : ' ';
+        std::cout << suffix << trailing_char << std::flush;
+        return full + trailing_char;
     }
+
+    if (lcp.size() > cur_input.size()) {
+        std::string suffix = lcp.substr(cur_input.size());
+        std::cout << suffix << std::flush;
+        return dir_path + lcp;
+    }
+
     if (tab_count == 1) {
         std::cout << "\x07" << std::flush;
-        return s;
+        return dir_path + cur_input;
     }
 
     std::sort(matches.begin(), matches.end());
     std::cout << "\n";
     for (size_t i = 0; i < matches.size(); i++) {
         if (i > 0) std::cout << "  ";
-        std::cout << matches[i] << (fs::is_directory(matches[i]) ? "/" : "");
+        std::string full = dir_path + matches[i];
+        std::cout << matches[i] << (fs::is_directory(full) ? "/" : "");
     }
-    std::cout << "\n$ " << full_line << std::flush;
-    return s;
+    std::cout << "\n$ " << full_input << std::flush;
+    return cur_input;
 }
-
