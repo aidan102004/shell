@@ -13,14 +13,21 @@
 #include <fcntl.h>
 #include <termios.h>
 #include "trie.h"
+#include "job.h"
+#include "command.h"
 
 namespace fs = std::__fs::filesystem;
 
 // Forward declarations
+void manage_bg_jobs();
+void dispatch(std::string command);
+void run_chain(std::string& command);
+std::vector<CommandSegment> split_commands(const std::string& command);
+std::vector<std::string> parse_redirections(std::vector<std::string>& clean_tokens, std::vector<std::string>& tokens, std::string& redirect_file, std::string& redirect_stderr, int& FLAG_CONST);
 pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens);
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
 std::string find_path(const std::string& arg);
-void execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
+int execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
 void handle_complete_builtin(std::vector<std::string>& args);
 std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input, int tab_count);
@@ -40,11 +47,12 @@ std::unordered_set<std::string> commands = {
 };
 
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
+std::unordered_map<int, Job> jobs;
+
 
 Trie builtin_trie;
 Trie filename_trie;
 struct termios original_termios;
-
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
     int saved = dup(fd_num);
@@ -89,56 +97,89 @@ int main() {
     populate_from_path();
     populate_files();
     while (true) {
+        //manage_bg_jobs();
         std::cout << "$ ";
-        char c;
         enable_raw(); //swap from canonical to raw
         std::string command = read_input(); //read input
-        std::vector<std::string> tokens;
-        parse(command, tokens); //parse input
-        if (tokens.empty()) continue;
+        if (command.empty()) continue;
+        dispatch(command);
+    }
+}
 
+void dispatch(std::string command) {
+    while (!command.empty() && command.back() == ' ') command.pop_back(); //strip whitespace
+
+    bool whole_chain_bg = false; 
+    if (!command.empty() && command.back() == '&') {
+        if (command.size() < 2 || command[command.size()-2] != '&') { //if this is the only & meaning bg
+            whole_chain_bg = true;
+            command.pop_back(); //remove &
+            while (!command.empty() && command.back() == ' ') command.pop_back(); //strip whitespace again
+        }
+    }
+
+    if (whole_chain_bg) {
+        pid_t pid = fork(); //complete whole command in its own bg
+        if (pid == 0) {
+            int dev_null = open("/dev/null", O_RDONLY);
+            if (dev_null >= 0) {
+                dup2(dev_null, STDIN_FILENO);
+                close(dev_null);
+            }
+            run_chain(command);  
+            _exit(0);
+        }
+        int j_num = jobs.size() + 1;
+        jobs[j_num] = {j_num, pid, command, true};
+        std::cout << "[" << j_num << "] " << pid << std::endl;
+    } else {
+        run_chain(command);
+    }
+}
+
+void run_chain(std::string& command) 
+{
+    std::vector<std::string> tokens;
+    auto segments = split_commands(command);
+    int cur_process_status = 0;
+    for (size_t i = 0; i < segments.size(); i++) {
+        const std::string& last_op = (i==0) ? "" : segments[i-1].op;
+        
+        if (last_op == "&&" && cur_process_status != 0) continue;
+        if (last_op == "||" && cur_process_status == 0) continue;
+
+        std::vector<std::string> tokens;
+        parse(segments[i].command, tokens);
         std::string redirect_file = ""; 
         int FLAG_CONST = O_TRUNC; //default for file redirection
         std::string redirect_stderr = "";
         std::vector<std::string> clean_tokens;
-
-        for (size_t i = 0; i < tokens.size(); i++) {
-            if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size()) {
-                redirect_file = tokens[i + 1];
-                i++; // skip filename token too
-            } else if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
-                redirect_file = tokens[i + 1];
-                FLAG_CONST = O_APPEND; //change flag for append
-                i++; 
-            }
-            else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
-                redirect_stderr = tokens[i + 1];
-                i++;
-            } else if (tokens[i] == "2>>" && i + 1 <tokens.size()) {
-                redirect_stderr = tokens[i + 1];
-                FLAG_CONST = O_APPEND; //change flag for append
-                i++;
-            } else {
-                clean_tokens.push_back(tokens[i]);
-            }
-        }
-
+        parse_redirections(clean_tokens, tokens, redirect_file, redirect_stderr, FLAG_CONST);
+        
         if (clean_tokens.empty()) continue;
+        bool is_bg = clean_tokens.back() == "&";
+        if (is_bg) clean_tokens.pop_back();
 
-        int jobnum = 1;
         std::string cmd = clean_tokens[0];
-        if (clean_tokens.back() == "&") {
-            clean_tokens.pop_back();
-            pid_t j = bg_job(find_path(cmd), clean_tokens);
-            std::cout << "[" << jobnum << "] " << j << std::endl;
-        } else if (cmd == "exit") {
-            break;
+
+        int status = 0;
+        if (cmd == "exit") {
+            int code = 0;
+            if (clean_tokens.size() > 1) {
+                try {
+                    code = std::stoi(clean_tokens[1]);
+                } catch (...) {
+                    code = 0; 
+                }
+            }
+            std::exit(code);
         } else if (cmd == "type") {
             int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
             int saved_err = redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
             handle_type(clean_tokens.size() > 1 ? clean_tokens[1] : "", commands);
             restore_fd(STDOUT_FILENO, saved_out);
             restore_fd(STDERR_FILENO, saved_err);
+            status = 0;
         } else if (cmd == "echo") {
             int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
             int saved_err = redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
@@ -149,25 +190,138 @@ int main() {
             std::cout << std::endl;
             restore_fd(STDOUT_FILENO, saved_out);
             restore_fd(STDERR_FILENO, saved_err);
+            status = 0;
         } else if (cmd == "pwd") {
             int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
             int saved_err = redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
             std::cout << fs::current_path().string() << std::endl;
             restore_fd(STDOUT_FILENO, saved_out);
             restore_fd(STDERR_FILENO, saved_err);
+            status = 0;
         } else if (cmd == "cd") {
             handle_cd(clean_tokens.size() > 1 ? clean_tokens[1] : "");
+            status = 0;
         } else if (cmd == "complete" ){
             handle_complete_builtin(clean_tokens);
+            status = 0;
         } else if (cmd == "jobs") {
             std::cout << "jobs is a builtin" << std::endl;
+            status = 0;
         } else {
-            execute(find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr, FLAG_CONST);
+            if (is_bg) {
+                pid_t pid = bg_job(find_path(cmd), clean_tokens);
+                if (pid > 0) {
+                    int j_num = jobs.size() + 1;
+                    jobs[j_num] = {j_num, pid, cmd, true};
+                    std::cout << "[" << j_num << "] " << pid << std::endl;
+                    status = 0;
+                } else {
+                    status = 1;
+                }
+            } else {
+            status = execute(find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr, FLAG_CONST);
+            } 
+        }  
+        cur_process_status = status; 
+    }
+}
+
+std::vector<CommandSegment> split_commands(const std::string& command) {
+    std::vector<CommandSegment> segments;
+    std::string cur = "";
+    bool iq = false;
+    bool idq = false;
+    for (size_t i = 0; i < command.size(); i++) {
+        char c = command[i];
+        if (c == '\\' && !iq && !idq) {
+            if (i + 1 < command.size()) {
+                cur += c;
+            }
+        } else if (c == '\\' && idq) {          // backslash inside double quotes
+            if (i + 1 < command.size()) {
+                char next = command[i + 1];
+                if (next == '"' || next == '\\') {
+                    cur += next;
+                } else {
+                    cur += c;
+                }
+            }  
+        } else if (c == '\"' && !idq && !iq) {
+            idq = true;
+        } else if (c == '\'' && !iq && !idq) {
+            iq = true;
+        } else if (c == '\'' && iq) {
+            iq = false;
+        } else if (c == '\"' && idq) {
+            idq = false;
+        } else if (c == '&' && i + 1 < command.size() && command[i+1] == '&' && !iq && !idq) {
+            segments.push_back({cur, "&&"});
+            cur.clear();
+            i++;
+            continue;
+        } else if (c == '|' && i + 1 < command.size() && command[i+1] == '|' && !iq && !idq) {
+            segments.push_back({cur, "||"});
+            cur.clear();
+            i++;
+            continue;
+        } else if (c == ';' && i + 1 < command.size() && !iq && !idq) {
+            segments.push_back({cur, ";"});
+            cur.clear();
+            i++;
+            continue;
+        } else {
+            cur += c;
         }
     }
 
-    return 0;
+    if (!cur.empty()) segments.push_back({cur, ""});
+    return segments;
 }
+
+void manage_bg_jobs() 
+{
+    for (auto it = jobs.begin(); it != jobs.end();)
+    {
+        int status;
+        pid_t res = waitpid(it->second.j_num, &status, WNOHANG);
+        if (res == 0) {
+            it++; //process still running
+        } else if (res == -1) {
+            std::cerr << "There has been an error running job [" << it->first << "] " << it->second.j_num << std::endl;
+            it++;
+        } else {
+            int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+            if (exit_code == 0) std::cout << "\n[" << it->first << "]+  Done    " << it->second.command_str << std::endl;
+            else std::cout << "\n[" << it->first << "]+  Exit " << exit_code << "  " << it->second.command_str << std::endl;
+            it = jobs.erase(it);
+        }
+    }
+}
+std::vector<std::string> parse_redirections(std::vector<std::string>& clean_tokens, std::vector<std::string>& tokens, std::string& redirect_file, std::string& redirect_stderr, int& FLAG_CONST)
+{
+    for (size_t i = 0; i < tokens.size(); i++) {
+        if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size()) {
+            redirect_file = tokens[i + 1];
+            i++; // skip filename token too
+        } else if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
+            redirect_file = tokens[i + 1];
+            FLAG_CONST = O_APPEND; //change flag for append
+            i++; 
+        }
+        else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
+            redirect_stderr = tokens[i + 1];
+            i++;
+        } else if (tokens[i] == "2>>" && i + 1 <tokens.size()) {
+            redirect_stderr = tokens[i + 1];
+            FLAG_CONST = O_APPEND; //change flag for append
+            i++;
+        } else {
+            clean_tokens.push_back(tokens[i]);
+        }
+    }
+    return clean_tokens;
+}
+
 
 pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens){
     std::vector<char*> argv;
@@ -317,11 +471,11 @@ std::string find_path(const std::string& arg) {
     return "";
 }
 
-void execute(const std::string& exe_path, const std::string& command,
+int execute(const std::string& exe_path, const std::string& command,
              const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST) {
     if (exe_path.empty()) {
         std::cerr << command << ": command not found" << std::endl;
-        return;
+        return 127;
     }
 
     std::vector<char*> argv;
@@ -333,7 +487,7 @@ void execute(const std::string& exe_path, const std::string& command,
     pid_t pid = fork();
     if (pid == -1) {
         perror("fork");
-        return;
+        return 1;
     }
 
     if (pid == 0) {
@@ -354,6 +508,7 @@ void execute(const std::string& exe_path, const std::string& command,
 
     int status;
     waitpid(pid, &status, 0);
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 1;
 }
 
 std::string read_input() {
