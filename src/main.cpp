@@ -2,12 +2,14 @@
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
+#include <map>
 #include <cstdlib>
 #include <vector>
 #include <sstream>
 #include <fstream>
 #include <filesystem>
 #include <unistd.h>
+#include <list>
 #include <sys/wait.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -19,6 +21,7 @@
 namespace fs = std::__fs::filesystem;
 
 // Forward declarations
+void handle_jobs_builtin();
 void manage_bg_jobs();
 void dispatch(std::string command);
 void run_chain(std::string& command);
@@ -47,7 +50,8 @@ std::unordered_set<std::string> commands = {
 };
 
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
-std::unordered_map<int, Job> jobs;
+std::map<int, Job> jobs;
+std::list<Job> listJobs;
 
 
 Trie builtin_trie;
@@ -89,7 +93,6 @@ int main() {
     std::cout << std::unitbuf; //flush cout and cerr after every output
     std::cerr << std::unitbuf;
     std::string command;
-
     //populate trie
     for (const auto& cmd : commands) {
         builtin_trie.insert(static_cast<std::string>(cmd));
@@ -107,12 +110,14 @@ int main() {
 }
 
 void dispatch(std::string command) {
+    std::string full_cmd = "";
     while (!command.empty() && command.back() == ' ') command.pop_back(); //strip whitespace
 
     bool whole_chain_bg = false; 
     if (!command.empty() && command.back() == '&') {
         if (command.size() < 2 || command[command.size()-2] != '&') { //if this is the only & meaning bg
             whole_chain_bg = true;
+            full_cmd = command;
             command.pop_back(); //remove &
             while (!command.empty() && command.back() == ' ') command.pop_back(); //strip whitespace again
         }
@@ -130,10 +135,23 @@ void dispatch(std::string command) {
             _exit(0);
         }
         int j_num = jobs.size() + 1;
-        jobs[j_num] = {j_num, pid, command, true};
+        jobs[j_num] = {j_num, pid, full_cmd, true};
         std::cout << "[" << j_num << "] " << pid << std::endl;
     } else {
         run_chain(command);
+    }
+}
+
+void handle_jobs_builtin() 
+{
+    const int pad_const = 24; 
+    std::vector<int> jobs_status(jobs.size(), false);
+    for (const auto& [order, job] : jobs) 
+    {
+        jobs_status[order] = job.status;
+        int pad_delta = pad_const - std::to_string(abs(static_cast<int>(job.process_id))).size();
+        std::string status = (jobs_status[job.j_num] == true) ? "Running" : "Done";
+        std::cout << "[" << job.j_num << "] " << status << std::setw(pad_delta) << job.command_str << std::endl;;
     }
 }
 
@@ -205,7 +223,7 @@ void run_chain(std::string& command)
             handle_complete_builtin(clean_tokens);
             status = 0;
         } else if (cmd == "jobs") {
-            std::cout << "jobs is a builtin" << std::endl;
+            handle_jobs_builtin();
             status = 0;
         } else {
             if (is_bg) {
@@ -293,7 +311,8 @@ void manage_bg_jobs()
             int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
             if (exit_code == 0) std::cout << "\n[" << it->first << "]+  Done    " << it->second.command_str << std::endl;
             else std::cout << "\n[" << it->first << "]+  Exit " << exit_code << "  " << it->second.command_str << std::endl;
-            it = jobs.erase(it);
+            it->second.status = false;
+            //it = jobs.erase(it);
         }
     }
 }
