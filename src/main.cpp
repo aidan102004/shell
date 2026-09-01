@@ -118,18 +118,20 @@ int main() {
                 redirect_stderr = tokens[i + 1];
                 FLAG_CONST = O_APPEND; //change flag for append
                 i++;
-            } else if (tokens[i] == "&") {
-                tokens.pop_back();
-                bg_job(clean_tokens[0], tokens);
             } else {
                 clean_tokens.push_back(tokens[i]);
             }
         }
 
         if (clean_tokens.empty()) continue;
-        std::string cmd = clean_tokens[0];
 
-        if (cmd == "exit") {
+        int jobnum = 1;
+        std::string cmd = clean_tokens[0];
+        if (clean_tokens.back() == "&") {
+            clean_tokens.pop_back();
+            pid_t j = bg_job(find_path(cmd), clean_tokens);
+            std::cout << "[" << jobnum << "] " << j << std::endl;
+        } else if (cmd == "exit") {
             break;
         } else if (cmd == "type") {
             int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
@@ -181,32 +183,18 @@ pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens){
     }
 
     if (pid == 0) {
-        pid_t pid1 = fork();
-        if (pid1 < 0) {
-            perror("fork");
-            return pid1;
+        int dev_null = open("/dev/null", O_RDONLY);
+        if (dev_null >= 0) {
+            dup2(dev_null, STDIN_FILENO);
+            close(dev_null);
         }
-        if (pid1 > 0) {
-            exit(0);
-        }
-        if (pid1 == 0) { 
-            int dev_null = open("dev/null", O_RDWR); 
-
-            if (dev_null >= 0) {
-                dup2(dev_null, STDIN_FILENO);
-                dup2(dev_null, STDOUT_FILENO);
-                dup2(dev_null, STDERR_FILENO);
-                
-                close(dev_null); 
-            }
-
-            char *args[] = {"/bin/sleep", "10", NULL};
-            execv(args[0], args);
-            exit(1);
-        }
+        execv(exe_path.c_str(), argv.data());
+        perror("execv");
+        _exit(1);
     }
-    std::cout << "parent process" << std::endl;
+
     return pid;
+
 }
 
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins) {
