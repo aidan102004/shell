@@ -3,6 +3,8 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <map>
+#include <thread>
+#include <mutex>
 #include <cstdlib>
 #include <vector>
 #include <sstream>
@@ -22,7 +24,7 @@ namespace fs = std::__fs::filesystem;
 
 // Forward declarations
 void handle_jobs_builtin();
-void manage_bg_jobs();
+void add_job(int j_num, pid_t pid, std::string full_cmd);
 void dispatch(std::string command);
 void run_chain(std::string& command);
 std::vector<CommandSegment> split_commands(const std::string& command);
@@ -51,11 +53,15 @@ std::unordered_set<std::string> commands = {
 
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
 std::map<int, Job> jobs;
-std::list<Job> listJobs;
+std::mutex j_mutex;
+std::pair<int,int> cur_prev_jobs = {-1, -1};
 
 
 Trie builtin_trie;
 Trie filename_trie;
+
+std::string current_input;
+std::mutex i_mutex;
 struct termios original_termios;
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
@@ -100,7 +106,6 @@ int main() {
     populate_from_path();
     populate_files();
     while (true) {
-        //manage_bg_jobs();
         std::cout << "$ ";
         enable_raw(); //swap from canonical to raw
         std::string command = read_input(); //read input
@@ -134,9 +139,8 @@ void dispatch(std::string command) {
             run_chain(command);  
             _exit(0);
         }
-        int j_num = jobs.size() + 1;
-        jobs[j_num] = {j_num, pid, full_cmd, true};
-        std::cout << "[" << j_num << "] " << pid << std::endl;
+        //add new job
+        add_job(jobs.size() + 1, pid, full_cmd);
     } else {
         run_chain(command);
     }
@@ -145,13 +149,18 @@ void dispatch(std::string command) {
 void handle_jobs_builtin() 
 {
     const int pad_const = 24; 
-    std::vector<int> jobs_status(jobs.size(), false);
+    std::cout << jobs.size() << std::endl;
     for (const auto& [order, job] : jobs) 
     {
-        jobs_status[order] = job.status;
         int pad_delta = pad_const - std::to_string(abs(static_cast<int>(job.process_id))).size();
-        std::string status = (jobs_status[job.j_num] == true) ? "Running" : "Done";
-        std::cout << "[" << job.j_num << "] " << status << std::setw(pad_delta) << job.command_str << std::endl;;
+        std::string status = (job.status == true) ? "Running" : "Done";
+        char marker = ' ';
+        if (order >= jobs.size() || jobs.size() == 1) {
+            marker = '+';
+        } else if (order == jobs.size() - 1) {
+            marker = '-';
+        }
+        std::cout << "[" << job.j_num << "]" << marker << " " << status << std::setw(pad_delta) << job.command_str << std::endl;;
     }
 }
 
@@ -296,25 +305,38 @@ std::vector<CommandSegment> split_commands(const std::string& command) {
     return segments;
 }
 
-void manage_bg_jobs() 
+void add_job(int j_num, pid_t pid, std::string full_cmd) 
 {
-    for (auto it = jobs.begin(); it != jobs.end();)
-    {
+    //lambda func
+    auto monitor_func = [](Job& job) {
         int status;
-        pid_t res = waitpid(it->second.j_num, &status, WNOHANG);
-        if (res == 0) {
-            it++; //process still running
-        } else if (res == -1) {
-            std::cerr << "There has been an error running job [" << it->first << "] " << it->second.j_num << std::endl;
-            it++;
-        } else {
+        pid_t res = waitpid(job.process_id, &status, 0);
+        if (res == job.process_id) {
+            std::string snapshot;
+            {
+                std::lock_guard<std::mutex> lock(i_mutex);
+                snapshot = current_input;
+            }
             int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-            if (exit_code == 0) std::cout << "\n[" << it->first << "]+  Done    " << it->second.command_str << std::endl;
-            else std::cout << "\n[" << it->first << "]+  Exit " << exit_code << "  " << it->second.command_str << std::endl;
-            it->second.status = false;
-            //it = jobs.erase(it);
+            std::cout << "\r\033[K";
+            if (exit_code == 0) std::cout << "[" << job.j_num << "]+  Done    " << job.command_str << std::endl;
+            else std::cout << "[" << job.j_num << "]+  Exit " << exit_code << "  " << job.command_str << std::endl;
+            std::cout << "$ " << snapshot << std::flush; 
+            job.status = false;
+            {
+                std::lock_guard<std::mutex> lock(j_mutex);
+                jobs.erase(job.j_num);
+            }
         }
+    };
+    //create job
+    {
+        std::lock_guard<std::mutex> lock(j_mutex);
+        jobs[j_num] = {j_num, pid, full_cmd, true};
     }
+    std::cout << "[" << j_num << "] " << pid << std::endl;
+    std::thread t(monitor_func, std::ref(jobs[j_num]));
+    t.detach();
 }
 std::vector<std::string> parse_redirections(std::vector<std::string>& clean_tokens, std::vector<std::string>& tokens, std::string& redirect_file, std::string& redirect_stderr, int& FLAG_CONST)
 {
@@ -531,7 +553,7 @@ int execute(const std::string& exe_path, const std::string& command,
 }
 
 std::string read_input() {
-    std::string input;
+    std::string loc_buffer;
     char c;
     int tab_count = 0;
     while (read(STDIN_FILENO, &c, 1) > 0) { //while input reading doesnt return 0 bytes
@@ -539,49 +561,58 @@ std::string read_input() {
         else if (c == '\t')
         { 
             std::string s = "";
-            if (input.find(' ') != std::string::npos) {
-                size_t pos = input.rfind(' ');
-                std::string arg = input.substr(pos + 1);
-                std::string command_name = input.substr(0, input.find(' '));
+            if (loc_buffer.find(' ') != std::string::npos) {
+                size_t pos = loc_buffer.rfind(' ');
+                std::string arg = loc_buffer.substr(pos + 1);
+                std::string command_name = loc_buffer.substr(0, loc_buffer.find(' '));
                 auto it = complete_paths.find(command_name);
                 if (it != complete_paths.end()) {
                     //handle case where the is custom complete specification for a cmd
                     tab_count++;
-                    s = run_completer(complete_paths[command_name].path(), command_name, arg, input, tab_count); //run completer
+                    s = run_completer(complete_paths[command_name].path(), command_name, arg, loc_buffer, tab_count); //run completer
                 } else if (arg.rfind('/') != std::string::npos) {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
-                    s = path_completion(arg, input, slash_pos, tab_count); // this method returns the string of the completed path
+                    s = path_completion(arg, loc_buffer, slash_pos, tab_count); // this method returns the string of the completed path
                     //std::cout << " full path " << s << std::endl;
                 } else {
                     tab_count++;
-                    s = completion(filename_trie, arg, input, tab_count);
+                    s = completion(filename_trie, arg, loc_buffer, tab_count);
                 }
-                s = input.substr(0, pos) + " " + s;
+                s = loc_buffer.substr(0, pos) + " " + s;
                 //std::cout << "value of s " << s << std::endl;
                 
             } else {
                 tab_count++; 
-                s = completion(builtin_trie, input, input, tab_count); //on tab press check trie
+                s = completion(builtin_trie, loc_buffer, loc_buffer, tab_count); //on tab press check trie
             }
-            if (s != input) {
-                input = s;
+            if (s != loc_buffer) {
+                loc_buffer = s;
                 tab_count = 0;
             }
         }
         else if (c == 127) {
             tab_count = 0;
-            if (!input.empty()) {
-                input.pop_back();
+            if (!loc_buffer.empty()) {
+                loc_buffer.pop_back();
                 std::cout << "\b \b" << std::flush; //backspace
             }
         } else {
             tab_count = 0;
-            input += c;
+            loc_buffer += c;
             std::cout << c;
+
+            {
+                std::lock_guard<std::mutex> lock(i_mutex);
+                current_input = loc_buffer;
+            }
         }
     }
-    return input;
+    {
+        std::lock_guard<std::mutex> lock(i_mutex);
+        current_input.clear();
+    }
+    return loc_buffer;
 }
 
 std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count) {
