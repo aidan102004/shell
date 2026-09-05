@@ -42,3 +42,7 @@ BirdShell currently supports:
 # Roadmap
  - Pipelines (cmd1 | cmd2 | cmd3)
  - Command history (history persistence)
+ - Line editing
+ - Environment and variables
+ - Extend job control
+ - Grep builtin
