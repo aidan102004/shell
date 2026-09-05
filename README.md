@@ -9,6 +9,7 @@ I started this project to practice system-level programming; however, it is also
 This is very much a work in progress, and features are being added incrementally. 
 
 # Built With
+C
 C++
 CMake
 
@@ -34,8 +35,10 @@ BirdShell currently supports:
 - Command completion — tab-completes built-in and PATH-resolved executable names.
 - Filename completion — tab-completes file and directory paths as arguments.
 - Programmable completion — allows per-command completion rules to be registered (similar in spirit to bash's complete builtin).
+- Supports &&, || and ; command segementation.
+- Background jobs - run jobs concurrently with &, which automatically reap once terminated. Display currebt jobs with jobs.
+- History - paramaterised readline history, up-down arrow navigation
 
 # Roadmap
  - Pipelines (cmd1 | cmd2 | cmd3)
- - Background jobs (&, jobs, fg, bg)
- - Command history (readline history + history builtin)
+ - Command history (history persistence)
