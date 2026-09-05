@@ -19,6 +19,7 @@
 #include "trie.h"
 #include "job.h"
 #include "command.h"
+#include "shellhistory.h"
 
 namespace fs = std::__fs::filesystem;
 
@@ -48,7 +49,7 @@ std::string matches_helper(std::vector<std::string>& matches, const std::string&
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
-    "echo", "exit", "type", "pwd", "cd", "complete", "jobs"
+    "echo", "exit", "type", "pwd", "cd", "complete", "jobs", "history"
 };
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
 
@@ -66,6 +67,7 @@ std::mutex i_mutex;
 
 
 struct termios original_termios;
+ShellHistory shell_history;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
@@ -113,6 +115,7 @@ int main() {
         std::cout << "$ ";
         enable_raw(); //swap from canonical to raw
         std::string command = read_input(); //read input
+        shell_history.add(command);
         if (command.empty()) continue;
         dispatch(command);
     }
@@ -175,6 +178,11 @@ void run_chain(std::string& command)
     auto segments = split_commands(command);
     int cur_process_status = 0;
     for (size_t i = 0; i < segments.size(); i++) {
+        //check for pipe | operator 
+        if (segments[i].op == "|") {
+            
+        }
+
         const std::string& last_op = (i==0) ? "" : segments[i-1].op;
         
         if (last_op == "&&" && cur_process_status != 0) continue;
@@ -239,6 +247,8 @@ void run_chain(std::string& command)
         } else if (cmd == "jobs") {
             handle_jobs_builtin();
             status = 0;
+        } else if (cmd == "history") {
+            shell_history.handle_builtin(clean_tokens);
         } else {
             if (is_bg) {
                 pid_t pid = bg_job(find_path(cmd), clean_tokens);
@@ -286,6 +296,11 @@ std::vector<CommandSegment> split_commands(const std::string& command) {
             iq = false;
         } else if (c == '\"' && idq) {
             idq = false;
+        } else if (c == '|' && i + 1 < command.size()) {
+            segments.push_back({cur, "|"});
+            cur.clear(); 
+            i++;
+            continue;
         } else if (c == '&' && i + 1 < command.size() && command[i+1] == '&' && !iq && !idq) {
             segments.push_back({cur, "&&"});
             cur.clear();
@@ -563,10 +578,44 @@ int execute(const std::string& exe_path, const std::string& command,
 
 std::string read_input() {
     std::string loc_buffer;
+    size_t cursor_pos = 0;
     char c;
     int tab_count = 0;
     while (read(STDIN_FILENO, &c, 1) > 0) { //while input reading doesnt return 0 bytes
         if (c == '\n') { std::cout << '\n'; break; } //enter
+
+        //arrow key handling for history 
+        else if (c == '\x1b') {  // ESC character
+            char seq[2];
+            if (read(STDIN_FILENO, &seq[0], 1) > 0 && seq[0] == '[') {
+                if (read(STDIN_FILENO, &seq[1], 1) > 0) {
+                    if (seq[1] == 'A') {
+                        std::string prev = shell_history.previous();
+                        loc_buffer = prev;
+                        cursor_pos = loc_buffer.size();
+                    } 
+                    else if (seq[1] == 'B') {
+                        std::string next = shell_history.next();
+                        loc_buffer = next;
+                        cursor_pos = loc_buffer.size();
+                    } 
+                    else if (seq[1] == 'C') {
+                        // right arrow
+                        if (cursor_pos < loc_buffer.size()) {
+                            std::cout << "\x1b[C";
+                            cursor_pos++;
+                        }
+                    } 
+                    else if (seq[1] == 'D') {
+                        // left arrow
+                        if (cursor_pos > 0) {
+                            std::cout << "\x1b[D";
+                            cursor_pos--;
+                        }
+                    }
+                }
+            }
+        }
         else if (c == '\t')
         { 
             std::string s = "";
@@ -583,13 +632,11 @@ std::string read_input() {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
                     s = path_completion(arg, loc_buffer, slash_pos, tab_count); // this method returns the string of the completed path
-                    //std::cout << " full path " << s << std::endl;
                 } else {
                     tab_count++;
                     s = completion(filename_trie, arg, loc_buffer, tab_count);
                 }
                 s = loc_buffer.substr(0, pos) + " " + s;
-                //std::cout << "value of s " << s << std::endl;
                 
             } else {
                 tab_count++; 
@@ -597,6 +644,7 @@ std::string read_input() {
             }
             if (s != loc_buffer) {
                 loc_buffer = s;
+                cursor_pos = loc_buffer.size();
                 tab_count = 0;
             }
         }
@@ -604,11 +652,13 @@ std::string read_input() {
             tab_count = 0;
             if (!loc_buffer.empty()) {
                 loc_buffer.pop_back();
+                cursor_pos--;
                 std::cout << "\b \b" << std::flush; //backspace
             }
         } else {
             tab_count = 0;
-            loc_buffer += c;
+            loc_buffer.insert(cursor_pos, 1, c);
+            cursor_pos++;
             std::cout << c;
 
             {
