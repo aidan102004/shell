@@ -10,6 +10,7 @@
                 "-g",
                 "${fileDirname}/main.cpp",
                 "${fileDirname}/Trie.cpp",
+                "${fileDirname}/shellhistory.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
@@ -32,6 +33,7 @@
                 "-g",
                 "${fileDirname}/main.cpp",
                 "${fileDirname}/Trie.cpp",
+                "${fileDirname}/shellhistory.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
