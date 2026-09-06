@@ -7,37 +7,49 @@
 
 namespace fs = std::__fs::filesystem;
 
+ShellHistory::ShellHistory() : index(0) {
+    static bool initialised = false;
+    if (!initialised) {
+        register_handlers();
+        initialised = true;
+    }
+}
+
+void ShellHistory::register_handlers() {
+    flag_handlers["-r"] = [this](const std::string& arg) {handle_read(arg);};
+    flag_handlers["-w"] = [this](const std::string& arg) {handle_write(arg);};
+    flag_handlers["-a"] = [this](const std::string& arg) {handle_append(arg);};
+} 
 
 void ShellHistory::handle_builtin(const std::vector<std::string>& tokens) {
-    int s = 0, pad = 4;
-    if (tokens.size() > 1) {
-        std::string flag = tokens[1];
-        if (flag == FLAG_READ) { //handle read flag
-            if (tokens.size() > 2) {
-                handle_read(tokens[2]);  //pass the filename
-            } else {
-                std::cerr << "Error: -r requires an argument" << std::endl;
-            }
-            return;
-        } else if (flag == FLAG_WRITE) {
-            if (tokens.size() > 2) {
-                handle_write(tokens[2]);  //pass the filename
-            } else {
-                std::cerr << "Error: -w requires an argument" << std::endl;
-            }
-            return;
+    if (tokens.size() < 2) {
+        print_history(0);
+        return;
+    }
+    
+    std::string flag = tokens[1];
+    
+    auto it = flag_handlers.find(flag);
+    if (it != flag_handlers.end()) {
+        if (tokens.size() > 2) {
+            it->second(tokens[2]); //runs the function
         } else {
-            try {
-                s = history.size() - std::stoi(tokens[1]);
-            } catch (const std::invalid_argument&) {
-                std::cerr << "Error: '" << tokens[1] << "' is not a valid number" << std::endl;
-                return;
-            }
+            std::cerr << "Error: " << flag << " requires an argument\n";
         }
+        return;
     }
-    for (size_t i = s; i < history.size(); i++) {
-        std::cout << std::setw(pad) << i << " " << history[i] << std::endl;
+    
+    try {
+        print_history(history.size() - std::stoi(flag));
+    } catch (const std::invalid_argument&) {
+        std::cerr << "Error: '" << flag << "' is not a valid flag or number\n";
     }
+}
+
+void ShellHistory::print_history(int n) {
+    int pad = 4;
+    for (size_t i = n; i < history.size(); i++) std::cout << std::setw(pad) << i << " " << history[i] << std::endl;
+    
 }
 
 void ShellHistory::handle_read(const std::string& file_name) {
@@ -50,12 +62,20 @@ void ShellHistory::handle_read(const std::string& file_name) {
 }
 
 void ShellHistory::handle_write(const std::string& file_name) {
-    std::ofstream file;
-    file.open(file_name);
+    std::ofstream file(file_name);
     for (const auto& line : history) {
         file << line + "\n";
     }
     file.close();
+}
+
+void ShellHistory::handle_append(const std::string& file_name) {
+    std::ofstream file(file_name, std::ios_base::app | std::ios_base::out); //combine flags 
+    for (const auto& line : history) {
+        file << line + "\n";
+    }
+    file.close();
+
 }
 
 void ShellHistory::add(const std::string& command) {

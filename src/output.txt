@@ -3,3 +3,8 @@ sleep 3 &
 echo hello
 jobs
 history -w output.txt 
+echo one
+echo two
+echo three
+cat output.txt 
+history -a output.txt 
