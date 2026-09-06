@@ -11,10 +11,15 @@ ShellHistory::ShellHistory() : index(0) {
     static bool initialised = false;
     if (!initialised) {
         register_handlers();
+        startup(path);
         initialised = true;
     }
 }
+void ShellHistory::startup(const std::string& path) {
+    setenv("HISTFILE", path.c_str(), 1);
+    handle_read(path);
 
+}
 void ShellHistory::register_handlers() {
     flag_handlers["-r"] = [this](const std::string& arg) {handle_read(arg);};
     flag_handlers["-w"] = [this](const std::string& arg) {handle_write(arg);};
@@ -59,6 +64,7 @@ void ShellHistory::handle_read(const std::string& file_name) {
     {
         history.push_back(str); //add each line into the history vector
     }
+    index = history.size();
 }
 
 void ShellHistory::handle_write(const std::string& file_name) {
@@ -97,4 +103,8 @@ std::string ShellHistory::next() {
     std::cout << "\r\033[K";
     std::cout << "$ " << history[index] << std::flush;
     return history[index];
+}
+
+void ShellHistory::close() {
+    handle_append(path);
 }

@@ -212,6 +212,7 @@ void run_chain(std::string& command)
                     code = 0; 
                 }
             }
+            shell_history.close();
             std::exit(code);
         } else if (cmd == "type") {
             int saved_out = redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
