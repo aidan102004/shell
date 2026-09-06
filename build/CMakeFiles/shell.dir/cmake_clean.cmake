@@ -1,9 +1,11 @@
 file(REMOVE_RECURSE
-  "CMakeFiles/shell.dir/src/main.cpp.obj"
-  "CMakeFiles/shell.dir/src/main.cpp.obj.d"
-  "libshell.dll.a"
-  "shell.exe"
-  "shell.exe.manifest"
+  "CMakeFiles/shell.dir/src/main.cpp.o"
+  "CMakeFiles/shell.dir/src/main.cpp.o.d"
+  "CMakeFiles/shell.dir/src/shellhistory.cpp.o"
+  "CMakeFiles/shell.dir/src/shellhistory.cpp.o.d"
+  "CMakeFiles/shell.dir/src/trie.cpp.o"
+  "CMakeFiles/shell.dir/src/trie.cpp.o.d"
+  "shell"
   "shell.pdb"
 )
 

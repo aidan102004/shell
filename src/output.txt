@@ -1,2 +1,5 @@
-hello world
-hello
+echo n > output.txt 
+sleep 3 &
+echo hello
+jobs
+history -w output.txt 

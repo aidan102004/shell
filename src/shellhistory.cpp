@@ -50,7 +50,12 @@ void ShellHistory::handle_read(const std::string& file_name) {
 }
 
 void ShellHistory::handle_write(const std::string& file_name) {
-    // implementation
+    std::ofstream file;
+    file.open(file_name);
+    for (const auto& line : history) {
+        file << line + "\n";
+    }
+    file.close();
 }
 
 void ShellHistory::add(const std::string& command) {

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <algorithm>
 #include <string>
 #include <unordered_set>
 #include <unordered_map>
@@ -157,7 +158,6 @@ void handle_jobs_builtin()
 {
     const int pad_const = 24; 
     std::lock_guard<std::mutex> lock(j_mutex);
-    std::cout << jobs.size() << std::endl;
     for (const auto& [order, job] : jobs) 
     {
         int pad_delta = pad_const - std::to_string(abs(static_cast<int>(job.process_id))).size(); //27 characters of padding
