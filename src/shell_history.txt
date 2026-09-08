@@ -90,3 +90,290 @@ jobs
 exit
 history -r
 exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+sleep 20 &
+echo hello
+cat output.txt 
+jobs
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+sleep 20 &
+echo hello
+cat output.txt 
+jobs
+exit
+history -r
+exit
+help declare
+help
+delcare var
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+sleep 20 &
+echo hello
+cat output.txt 
+jobs
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+sleep 20 &
+echo hello
+cat output.txt 
+jobs
+exit
+history -r
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+sleep 20 &
+echo hello
+cat output.txt 
+jobs
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+history
+cat Monash/FI
+complete
+clear
+sleep 5
+sssss
+sleep 5 &
+hello 
+sleep 10 &
+sleep 20 &
+sleep 30 &
+sleep 40 &
+jobs
+jobs
+josb
+jobs
+clear
+sleep 4 && echo hello
+e
+exit
+sleep 20 &
+echo hello
+cat output.txt 
+jobs
+exit
+history -r
+exit
+help declare
+help
+delcare var
+exit
+type declare
+declare -p missing var
+exit

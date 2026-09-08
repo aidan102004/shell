@@ -21,6 +21,7 @@
 #include "job.h"
 #include "command.h"
 #include "shellhistory.h"
+#include "declarebuiltin.h"
 
 namespace fs = std::__fs::filesystem;
 
@@ -50,7 +51,7 @@ std::string matches_helper(std::vector<std::string>& matches, const std::string&
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
-    "echo", "exit", "type", "pwd", "cd", "complete", "jobs", "history"
+    "echo", "exit", "type", "pwd", "cd", "complete", "jobs", "history", "declare"
 };
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
 
@@ -69,6 +70,7 @@ std::mutex i_mutex;
 
 struct termios original_termios;
 ShellHistory shell_history;
+DeclareBuiltin declare_builtin;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
@@ -250,6 +252,8 @@ void run_chain(std::string& command)
             status = 0;
         } else if (cmd == "history") {
             shell_history.handle_builtin(clean_tokens);
+        } else if (cmd == "declare") {
+            declare_builtin.handle_builtin(clean_tokens);
         } else {
             if (is_bg) {
                 pid_t pid = bg_job(find_path(cmd), clean_tokens);
