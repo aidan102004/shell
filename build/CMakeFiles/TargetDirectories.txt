@@ -1,3 +1,0 @@
-/Users/aidanabidi/shell/shell/build/CMakeFiles/shell.dir
-/Users/aidanabidi/shell/shell/build/CMakeFiles/edit_cache.dir
-/Users/aidanabidi/shell/shell/build/CMakeFiles/rebuild_cache.dir
