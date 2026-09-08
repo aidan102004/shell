@@ -24,6 +24,8 @@ void ShellHistory::register_handlers() {
     flag_handlers["-r"] = [this](const std::string& arg) {handle_read(arg);};
     flag_handlers["-w"] = [this](const std::string& arg) {handle_write(arg);};
     flag_handlers["-a"] = [this](const std::string& arg) {handle_append(arg);};
+    flag_handlers["-c"] = [this](const std::string& arg) {handle_clear(arg);};
+    flag_handlers["-d"] = [this](const std::string& arg) {handle_delete(arg);};
 } 
 
 void ShellHistory::handle_builtin(const std::vector<std::string>& tokens) {
@@ -36,13 +38,11 @@ void ShellHistory::handle_builtin(const std::vector<std::string>& tokens) {
     
     auto it = flag_handlers.find(flag);
     if (it != flag_handlers.end()) {
-        if (tokens.size() > 2) {
-            it->second(tokens[2]); //runs the function
-        } else {
-            std::cerr << "Error: " << flag << " requires an argument\n";
-        }
+        std::string arg = (tokens.size() > 2) ? tokens[2] : "";
+        it->second(arg); //runs the function
         return;
     }
+    std::cerr << "Error: " << flag << " unknown flag\n";
     
     try {
         print_history(history.size() - std::stoi(flag));
@@ -84,6 +84,15 @@ void ShellHistory::handle_append(const std::string& file_name) {
 
 }
 
+void ShellHistory::handle_clear(const std::string& arg) {
+    history.clear();
+    std::ofstream file(path, std::ios::trunc);
+    file.close();
+}
+
+void ShellHistory::handle_delete(const std::string& arg) {
+    history.erase(history.begin() + std::stoi(arg));
+}
 void ShellHistory::add(const std::string& command) {
     if (!command.empty()) {
         history.push_back(command);

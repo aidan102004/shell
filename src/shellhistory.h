@@ -22,6 +22,8 @@ public:
     void handle_read(const std::string& file_name);
     void handle_write(const std::string& file_name);
     void handle_append(const std::string& file_name);
+    void handle_clear(const std::string& arg);
+    void handle_delete(const std::string& arg);
     void add(const std::string& command);
     void close();
     std::string previous();
