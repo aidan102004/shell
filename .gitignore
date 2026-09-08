@@ -1,0 +1,27 @@
+# Build directories
+build/
+out/
+cmake-build-*/
+
+# Generated files
+*.o
+*.a
+*.so
+*.dylib
+Makefile
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+*.exe
+*.dSYM/
+
+# IDE/editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs/history
+shell_history.txt
+output.txt
+*.log
