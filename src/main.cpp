@@ -17,13 +17,18 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <termios.h>
-#include "trie.h"
-#include "job.h"
-#include "command.h"
-#include "shellhistory.h"
-#include "declarebuiltin.h"
-#include "jobsbuiltin.h"
-#include "global.h"
+#include "./headers/trie.h"
+#include "./headers/job.h"
+#include "./headers/command.h"
+#include "./builtins/shellhistory.h"
+#include "./builtins/declarebuiltin.h"
+#include "./builtins/jobsbuiltin.h"
+#include "./headers/global.h"
+#include "./headers/util.h"
+#include "./builtins/completebuiltin.h"
+#include "./headers/completer.h"
+#include "./headers/populater.h"
+#include "./headers/parser.h"
 
 std::string current_input;
 std::mutex i_mutex;
@@ -31,28 +36,15 @@ std::mutex i_mutex;
 namespace fs = std::__fs::filesystem;
 
 // Forward declarations
-void add_job(pid_t pid, std::string full_cmd);
 void dispatch(std::string command);
 void run_chain(std::string& command);
-std::vector<CommandSegment> split_commands(const std::string& command);
-std::vector<std::string> parse_redirections(std::vector<std::string>& clean_tokens, std::vector<std::string>& tokens, std::string& redirect_file, std::string& redirect_stderr, int& FLAG_CONST);
 pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens);
 void handle_type(const std::string& arg, const std::unordered_set<std::string>& builtins);
 std::string find_path(const std::string& arg);
 int execute(const std::string& exe_path, const std::string& command, const std::vector<std::string>& tokens, const std::string& redirect_file, const std::string& redirect_stderr, int FLAG_CONST);
 void handle_cd(const std::string& arg);
-void handle_complete_builtin(std::vector<std::string>& args);
-std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input, int tab_count);
-std::vector<std::string> execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word, const std::string& f_in);
 std::string read_input();
-std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count);
-void parse(const std::string& command, std::vector<std::string>& tokens);
-void variables_check(std::vector<std::string>& tokens);
-void populate_from_path();
-std::string longest_common_prefix(const std::vector<std::string>& matches);
-void populate_files();
-std::string path_completion(const std::string& s, const std::string& full_line, size_t s_pos, int tab_count);
-std::string matches_helper(std::vector<std::string>& matches, const std::string& cur_input, const std::string& full_input, int tab_count, const std::string& dir_path ="");
+
 
 // Builtin commands list
 std::unordered_set<std::string> commands = {
@@ -68,6 +60,7 @@ struct termios original_termios;
 ShellHistory shell_history;
 DeclareBuiltin declare_builtin;
 JobsBuiltin jobs_builtin;
+CompleteBuiltin complete_builtin;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
@@ -109,8 +102,8 @@ int main() {
     for (const auto& cmd : commands) {
         builtin_trie.insert(static_cast<std::string>(cmd));
     }
-    populate_from_path();
-    populate_files();
+    Populater::populate_from_path(&builtin_trie);
+    Populater::populate_files(&filename_trie);
     while (true) {
         std::cout << "$ ";
         enable_raw(); //swap from canonical to raw
@@ -156,7 +149,7 @@ void dispatch(std::string command) {
 void run_chain(std::string& command) 
 {
     std::vector<std::string> tokens;
-    auto segments = split_commands(command);
+    auto segments = Parser::split_commands(command);
     int cur_process_status = 0;
     for (size_t i = 0; i < segments.size(); i++) {
         //check for pipe | operator 
@@ -168,13 +161,13 @@ void run_chain(std::string& command)
         if (last_op == "||" && cur_process_status == 0) continue;
 
         std::vector<std::string> tokens;
-        parse(segments[i].command, tokens);
-        variables_check(tokens);
+        Parser::parse(segments[i].command, tokens);
+        Parser::variables_check(tokens, declare_builtin);
         std::string redirect_file = ""; 
         int FLAG_CONST = O_TRUNC; //default for file redirection
         std::string redirect_stderr = "";
         std::vector<std::string> clean_tokens;
-        parse_redirections(clean_tokens, tokens, redirect_file, redirect_stderr, FLAG_CONST);
+        Parser::parse_redirections(clean_tokens, tokens, redirect_file, redirect_stderr, FLAG_CONST);
         
         if (clean_tokens.empty()) continue;
         bool is_bg = clean_tokens.back() == "&";
@@ -223,7 +216,7 @@ void run_chain(std::string& command)
             handle_cd(clean_tokens.size() > 1 ? clean_tokens[1] : "");
             status = 0;
         } else if (cmd == "complete" ){
-            handle_complete_builtin(clean_tokens);
+            complete_builtin.handle_complete_builtin(clean_tokens);
             status = 0;
         } else if (cmd == "jobs") {
             jobs_builtin.handle_builtin();
@@ -234,7 +227,7 @@ void run_chain(std::string& command)
         } else if (cmd == "declare") {
             declare_builtin.handle_builtin(clean_tokens);
         } else {
-            if (is_bg) {
+            if (is_bg) { //need to remove all this
                 pid_t pid = bg_job(find_path(cmd), clean_tokens);
                 if (pid > 0) {
                     int j_num = jobs_builtin.get_jobs().size() + 1;
@@ -251,129 +244,6 @@ void run_chain(std::string& command)
         cur_process_status = status; 
     }
 }
-
-void variables_check(std::vector<std::string>& tokens) {
-    std::vector<std::string> res;
-    std::string cur = "";
-    for (const auto& s : tokens) {
-        for (size_t i = 0; i < s.size(); i++) {
-            char c = s[i];
-            if (c == '$') {
-                if (i + 1 < s.size() && s[i+1] == '{') {
-                    size_t pos = s.find('}', i);
-                    if (pos != std::string::npos) {
-                        auto result = declare_builtin.get_var(s.substr(i + 2, pos - 2 - i));
-                        if (result) {
-                            std::string val = std::any_cast<std::string>(*result);
-                            res.push_back(cur + val);
-                            cur.clear();
-                        }
-                        i = pos;
-                    } else {
-                        cur += s.substr(i);
-                        i = s.size();
-                    }
-                } else {
-                    auto result = declare_builtin.get_var(s.substr(i + 1));
-                    if (result) {
-                        std::string val = std::any_cast<std::string>(*result);
-                        res.push_back(cur + val);
-                        cur.clear();
-                    }
-                    i = s.size();
-                }
-            } else {
-                cur += c;
-            }
-        }
-        if (!cur.empty()) res.push_back(cur);
-        cur.clear();
-    }
-    tokens = res;
-}
-
-std::vector<CommandSegment> split_commands(const std::string& command) {
-    std::vector<CommandSegment> segments;
-    std::string cur = "";
-    bool iq = false;
-    bool idq = false;
-    for (size_t i = 0; i < command.size(); i++) {
-        char c = command[i];
-        if (c == '\\' && !iq && !idq) {
-            if (i + 1 < command.size()) {
-                cur += c;
-            }
-        } else if (c == '\\' && idq) {          // backslash inside double quotes
-            if (i + 1 < command.size()) {
-                char next = command[i + 1];
-                if (next == '"' || next == '\\') {
-                    cur += next;
-                } else {
-                    cur += c;
-                }
-            }  
-        } else if (c == '\"' && !idq && !iq) {
-            idq = true;
-        } else if (c == '\'' && !iq && !idq) {
-            iq = true;
-        } else if (c == '\'' && iq) {
-            iq = false;
-        } else if (c == '\"' && idq) {
-            idq = false;
-        } else if (c == '|' && i + 1 < command.size() && command[i+1] != '|') {
-            segments.push_back({cur, "|"});
-            cur.clear(); 
-            i++;
-            continue;
-        } else if (c == '&' && i + 1 < command.size() && command[i+1] == '&' && !iq && !idq) {
-            segments.push_back({cur, "&&"});
-            cur.clear();
-            i++;
-            continue;
-        } else if (c == '|' && i + 1 < command.size() && command[i+1] == '|' && !iq && !idq) {
-            segments.push_back({cur, "||"});
-            cur.clear();
-            i++;
-            continue;
-        } else if (c == ';' && i + 1 < command.size() && !iq && !idq) {
-            segments.push_back({cur, ";"});
-            cur.clear();
-            i++;
-            continue;
-        } else {
-            cur += c;
-        }
-    }
-
-    if (!cur.empty()) segments.push_back({cur, ""});
-    return segments;
-}
-
-std::vector<std::string> parse_redirections(std::vector<std::string>& clean_tokens, std::vector<std::string>& tokens, std::string& redirect_file, std::string& redirect_stderr, int& FLAG_CONST)
-{
-    for (size_t i = 0; i < tokens.size(); i++) {
-        if ((tokens[i] == ">" || tokens[i] == "1>") && i + 1 < tokens.size()) {
-            redirect_file = tokens[i + 1];
-            i++; // skip filename token too
-        } else if ((tokens[i] == ">>" || tokens[i] == "1>>") && i + 1 < tokens.size()) {
-            redirect_file = tokens[i + 1];
-            FLAG_CONST = O_APPEND; //change flag for append
-            i++; 
-        }
-        else if (tokens[i] == "2>" && i + 1 <tokens.size()) {
-            redirect_stderr = tokens[i + 1];
-            i++;
-        } else if (tokens[i] == "2>>" && i + 1 <tokens.size()) {
-            redirect_stderr = tokens[i + 1];
-            FLAG_CONST = O_APPEND; //change flag for append
-            i++;
-        } else {
-            clean_tokens.push_back(tokens[i]);
-        }
-    }
-    return clean_tokens;
-}
-
 
 pid_t bg_job(const std::string& exe_path, std::vector<std::string>& tokens){
     std::vector<char*> argv;
@@ -428,82 +298,6 @@ void handle_cd(const std::string& arg) {
     if (chdir(path) != 0) {
         std::cerr << "cd: " << path << ": No such file or directory" << std::endl;
     }
-}
-
-void handle_complete_builtin(std::vector<std::string>& args) {
-    std::string flag = args[1];
-    fs::directory_entry path(args[2]);
-    std::string cmd = args.back();
-    if (flag == "-C") {
-        complete_paths[cmd] = path;
-    } else if (flag == "-p") {
-        auto it = complete_paths.find(cmd);
-        if (it != complete_paths.end()) {
-            std::cout << "complete -C '" << it->second.path().string() << "' " << cmd << std::endl; 
-        } else {
-            std::cout << "complete: " << cmd << ": no completion specification" << std::endl;
-        }
-    } else if (flag == "-r") {
-        complete_paths.erase(cmd);
-    }
-}
-std::string run_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& full_input, int tab_count) 
-{
-    std::string before_curr = full_input.substr(0, full_input.rfind(' '));
-    size_t second_last_space = before_curr.rfind(' ');
-    std::string prev_word;
-
-    if (curr_word.empty()) {
-        prev_word = "";
-    } else if (second_last_space != std::string::npos) {
-        prev_word = before_curr.substr(second_last_space + 1);
-    } else {
-        prev_word = before_curr;   
-    }
-    std::vector<std::string> candidates = execute_completer(script, command, curr_word, prev_word, full_input);
-    return matches_helper(candidates, curr_word, full_input, tab_count);
-}
-std::vector<std::string> execute_completer(const fs::path& script, const std::string& command, const std::string& curr_word, const std::string& prev_word, const std::string& f_in) {
-    int fds[2], nbytes, status; //create a 2 element array that pipe() will fill in with read and write, nbytes will hold read value
-    std::vector<std::string> res;
-
-    if (pipe(fds) == -1) { //create pipeline
-        perror("pipe");
-        res.push_back(curr_word);
-        return res; //return unchanged arg if there is an error
-    }
-    pid_t pid = fork(); //duplicates the entire current process 
-    if (pid == -1) {
-        perror("fork");
-        res.push_back(curr_word);
-        return res;
-    }
-    if (pid == 0) { //child process
-        setenv("COMP_LINE", f_in.c_str(), 1);
-        setenv("COMP_POINT", std::to_string(f_in.size()).c_str(), 1);
-        close(fds[0]); //child process doesnt need to read
-        dup2(fds[1], STDOUT_FILENO); //redirect stdout to fds[1]
-        close(fds[1]); //close write
-        execl(script.c_str(), script.c_str(), command.c_str(), curr_word.c_str(), prev_word.c_str(), nullptr); //replace child process with the script
-        perror("execvp");
-        _exit(1);
-    } 
-    //parent process
-    close(fds[1]); //close write
-    char inbuf[256]; //fixed raw buffer to recieve chunks of data from pipe 256 bytes at a time
-    std::string output;
-    while ((nbytes = read(fds[0], inbuf, sizeof(inbuf))) > 0) //read loop, read function returns num of bytes written into inbuf
-        output.append(inbuf, nbytes); //append the chars specified by nbytes
-
-    std::stringstream ss(output);
-    std::string word;
-    while (ss >> word) {
-        res.push_back(word);
-    }
-    close(fds[0]); //close read
-    waitpid(pid, &status, 0); 
-    return res;
-
 }
 
 std::string find_path(const std::string& arg) {
@@ -614,20 +408,20 @@ std::string read_input() {
                 if (it != complete_paths.end()) {
                     //handle case where the is custom complete specification for a cmd
                     tab_count++;
-                    s = run_completer(complete_paths[command_name].path(), command_name, arg, loc_buffer, tab_count); //run completer
+                    s = complete_builtin.run_completer(complete_paths[command_name].path(), command_name, arg, loc_buffer, tab_count); //run completer
                 } else if (arg.rfind('/') != std::string::npos) {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
-                    s = path_completion(arg, loc_buffer, slash_pos, tab_count); // this method returns the string of the completed path
+                    s = Completer::path_completion(arg, loc_buffer, slash_pos, tab_count); // this method returns the string of the completed path
                 } else {
                     tab_count++;
-                    s = completion(filename_trie, arg, loc_buffer, tab_count);
+                    s = Completer::completion(filename_trie, arg, loc_buffer, tab_count);
                 }
                 s = loc_buffer.substr(0, pos) + " " + s;
                 
             } else {
                 tab_count++; 
-                s = completion(builtin_trie, loc_buffer, loc_buffer, tab_count); //on tab press check trie
+                s = Completer::completion(builtin_trie, loc_buffer, loc_buffer, tab_count); //on tab press check trie
             }
             if (s != loc_buffer) {
                 loc_buffer = s;
@@ -659,13 +453,6 @@ std::string read_input() {
         current_input.clear();
     }
     return loc_buffer;
-}
-
-std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count) {
-    //if (cur_input.empty()) return cur_input;
-
-    std::vector<std::string> matches = trie.get_children(cur_input);
-    return matches_helper(matches, cur_input, full_line, tab_count);
 }
 
 void parse(const std::string& command, std::vector<std::string>& tokens) {
@@ -706,108 +493,4 @@ void parse(const std::string& command, std::vector<std::string>& tokens) {
         }
 
         if (!cur.empty()) tokens.push_back(cur);
-}
-
-void populate_from_path() {
-    const char* p = std::getenv("PATH"); //gets val of path env variable
-    if (!p) return; //if nullptr return
-
-    std::stringstream ss(p); //read like a stream
-    std::string dir;
-    while (std::getline(ss, dir, ':')) { //insert into dir
-        if (dir.empty()) continue;
-        if (!fs::exists(dir)) continue; //check if exists
-        try {
-            for (const auto &entry : fs::directory_iterator(dir)) { //loops through file and folders in the dir
-                try {
-                    if (fs::is_regular_file(entry) && access(entry.path().c_str(), X_OK) == 0) { //if file is executable
-                        builtin_trie.insert(entry.path().filename().string());
-                    }
-                } catch(...) {
-                    continue;
-                }
-        }
-        } catch (...) {
-            continue;
-        }
-    }
-}
-
-std::string longest_common_prefix(const std::vector<std::string>& matches) {
-    if (matches.empty()) return "";
-    if (matches.size() == 1) return matches[0];
-    std::string lcp = "";
-    for (size_t i = 0; i < matches[0].size(); i++) {
-        char c = matches[0][i];
-
-        for (size_t j = 1; j < matches.size(); j++) {
-            if (i >= matches[j].size() || matches[j][i] != c) {
-                return lcp;
-            }
-        }
-        lcp += c;
-    }
-    return lcp;
-}
-
-void populate_files() {
-    for (const auto &entry : fs::directory_iterator(fs::current_path())) {
-        if (fs::is_regular_file(entry) || fs::is_directory(entry)) {
-            filename_trie.insert(entry.path().filename().string());
-        }
-    }
-}
-
-std::string path_completion(const std::string& s, const std::string& full_line, size_t s_pos, int tab_count)  
-{
-    std::string dir_path = s.substr(0, s_pos + 1); //returns the directory path before the last /
-    std::string prefix = s.substr(s_pos + 1); //whatever is after the slash
-    std::vector<std::string> matches;
-    try {
-        for (const auto& entry : fs::directory_iterator(dir_path)) {
-            std::string name = entry.path().filename().string(); //every file in that directory
-            if (name.rfind(prefix, 0) == 0) matches.push_back(name); //if the prefix exists in name add to matches
-        }
-
-    } catch(...) {}
-    
-    return matches_helper(matches, prefix, full_line, tab_count, dir_path);
-}
-
-std::string matches_helper(std::vector<std::string>& matches, const std::string& cur_input,
-                             const std::string& full_input, int tab_count, const std::string& dir_path) {
-
-    if (matches.empty()) { 
-        std::cout << "\x07" << std::flush;
-        return dir_path + cur_input;
-    }
-    std::string lcp = longest_common_prefix(matches);
-    if (matches.size() == 1) {
-        std::string suffix = lcp.substr(cur_input.size());
-        std::string full = dir_path + lcp;
-        char trailing_char = fs::is_directory(full) ? '/' : ' ';
-        std::cout << suffix << trailing_char << std::flush;
-        return full + trailing_char;
-    }
-
-    if (lcp.size() > cur_input.size()) {
-        std::string suffix = lcp.substr(cur_input.size());
-        std::cout << suffix << std::flush;
-        return dir_path + lcp;
-    }
-
-    if (tab_count == 1) {
-        std::cout << "\x07" << std::flush;
-        return dir_path + cur_input;
-    }
-
-    std::sort(matches.begin(), matches.end());
-    std::cout << "\n";
-    for (size_t i = 0; i < matches.size(); i++) {
-        if (i > 0) std::cout << "  ";
-        std::string full = dir_path + matches[i];
-        std::cout << matches[i] << (fs::is_directory(full) ? "/" : "");
-    }
-    std::cout << "\n$ " << full_input << std::flush;
-    return cur_input;
 }

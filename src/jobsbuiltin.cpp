@@ -1,5 +1,6 @@
-#include "jobsbuiltin.h"
-#include "global.h"
+#include "./builtins/jobsbuiltin.h"
+#include "./headers/job.h"
+#include "./headers/global.h"
 #include <iostream>
 #include <iomanip>
 

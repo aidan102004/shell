@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
-#include "trie.h"
+#include "./headers/trie.h"
 
 void Trie::insert(const std::string &text) {
     if (!root) root = std::make_unique<trienode>(); //if the true is empty create the root 

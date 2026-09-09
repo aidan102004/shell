@@ -13,6 +13,11 @@
                 "${fileDirname}/shellhistory.cpp",
                 "${fileDirname}/declarebuiltin.cpp",
                 "${fileDirname}/jobsbuiltin.cpp",
+                "${fileDirname}/completebuiltin.cpp",
+                "${fileDirname}/util.cpp",
+                "${fileDirname}/completer.cpp",
+                "${fileDirname}/populater.cpp",
+                "${fileDirname}/parser.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
@@ -38,6 +43,11 @@
                 "${fileDirname}/shellhistory.cpp",
                 "${fileDirname}/declarebuiltin.cpp",
                 "${fileDirname}/jobsbuiltin.cpp",
+                "${fileDirname}/completebuiltin.cpp",
+                "${fileDirname}/util.cpp",
+                "${fileDirname}/completer.cpp",
+                "${fileDirname}/populater.cpp",
+                "${fileDirname}/parser.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
