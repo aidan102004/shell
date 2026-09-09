@@ -37,12 +37,12 @@ BirdShell currently supports:
 - Programmable completion — allows per-command completion rules to be registered (similar in spirit to bash's complete builtin).
 - Supports &&, || and ; command segementation.
 - Background jobs - run jobs concurrently with &, which automatically reap once terminated. Display currebt jobs with jobs.
-- History - paramaterised readline history, up-down arrow navigation
+- History - paramaterised readline history with flags, up-down arrow navigation, persistence 
+- Declare - add variables of different types (int, string, array), and expand them through commands
+
 
 # Roadmap
  - Pipelines (cmd1 | cmd2 | cmd3)
- - Command history (history persistence)
  - Line editing
- - Environment and variables
  - Extend job control
  - Grep builtin

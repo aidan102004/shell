@@ -22,11 +22,15 @@
 #include "command.h"
 #include "shellhistory.h"
 #include "declarebuiltin.h"
+#include "jobsbuiltin.h"
+#include "global.h"
+
+std::string current_input;
+std::mutex i_mutex;
 
 namespace fs = std::__fs::filesystem;
 
 // Forward declarations
-void handle_jobs_builtin();
 void add_job(pid_t pid, std::string full_cmd);
 void dispatch(std::string command);
 void run_chain(std::string& command);
@@ -56,22 +60,14 @@ std::unordered_set<std::string> commands = {
 };
 std::unordered_map<std::string, fs::directory_entry> complete_paths;
 
-//jobs declarations
-std::map<int, Job> jobs;
-std::mutex j_mutex;
-
 //trie declarations
 Trie builtin_trie;
 Trie filename_trie;
 
-//global input storage
-std::string current_input; 
-std::mutex i_mutex;
-
-
 struct termios original_termios;
 ShellHistory shell_history;
 DeclareBuiltin declare_builtin;
+JobsBuiltin jobs_builtin;
 
 int redirect_fd(int fd_num, int FLAG_CONST, const std::string& path) {
     if (path.empty()) return -1;
@@ -151,27 +147,9 @@ void dispatch(std::string command) {
             _exit(0);
         }
         //add new job
-        add_job(pid, full_cmd);
+        jobs_builtin.add_job(pid, full_cmd);
     } else {
         run_chain(command);
-    }
-}
-
-void handle_jobs_builtin() 
-{
-    const int pad_const = 24; 
-    std::lock_guard<std::mutex> lock(j_mutex);
-    for (const auto& [order, job] : jobs) 
-    {
-        int pad_delta = pad_const - std::to_string(abs(static_cast<int>(job.process_id))).size(); //27 characters of padding
-        std::string status = (job.status == true) ? "Running" : "Done"; //so far this will always be true
-        char marker = ' ';
-        if (jobs.size() == 1 || job.j_num == jobs.rbegin()->first) {
-            marker = '+';
-        } else if (job.j_num == std::next(jobs.rbegin())->first) {
-            marker = '-';
-        }
-        std::cout << "[" << job.j_num << "]" << marker << "  " << status << std::setw(pad_delta) << job.command_str << std::endl;;
     }
 }
 
@@ -182,9 +160,7 @@ void run_chain(std::string& command)
     int cur_process_status = 0;
     for (size_t i = 0; i < segments.size(); i++) {
         //check for pipe | operator 
-        if (segments[i].op == "|") {
-            
-        }
+        //if (segments[i].op == "|") 
 
         const std::string& last_op = (i==0) ? "" : segments[i-1].op;
         
@@ -250,7 +226,8 @@ void run_chain(std::string& command)
             handle_complete_builtin(clean_tokens);
             status = 0;
         } else if (cmd == "jobs") {
-            handle_jobs_builtin();
+            jobs_builtin.handle_builtin();
+            //handle_jobs_builtin();
             status = 0;
         } else if (cmd == "history") {
             shell_history.handle_builtin(clean_tokens);
@@ -260,8 +237,8 @@ void run_chain(std::string& command)
             if (is_bg) {
                 pid_t pid = bg_job(find_path(cmd), clean_tokens);
                 if (pid > 0) {
-                    int j_num = jobs.size() + 1;
-                    jobs[j_num] = {j_num, pid, cmd, true};
+                    int j_num = jobs_builtin.get_jobs().size() + 1;
+                    jobs_builtin.get_jobs()[j_num] = {j_num, pid, cmd, true};
                     std::cout << "[" << j_num << "] " << pid << std::endl;
                     status = 0;
                 } else {
@@ -343,7 +320,7 @@ std::vector<CommandSegment> split_commands(const std::string& command) {
             iq = false;
         } else if (c == '\"' && idq) {
             idq = false;
-        } else if (c == '|' && i + 1 < command.size()) {
+        } else if (c == '|' && i + 1 < command.size() && command[i+1] != '|') {
             segments.push_back({cur, "|"});
             cur.clear(); 
             i++;
@@ -372,43 +349,6 @@ std::vector<CommandSegment> split_commands(const std::string& command) {
     return segments;
 }
 
-void add_job(pid_t pid, std::string full_cmd) 
-{
-    //lambda func
-    auto monitor_func = [](Job& job) {
-        int status;
-        pid_t res = waitpid(job.process_id, &status, 0); //waits for process to finish
-        if (res == job.process_id) {
-            std::string snapshot;
-            {
-                std::lock_guard<std::mutex> lock(i_mutex);
-                snapshot = current_input; //get current input
-            }
-            int exit_code = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
-            std::cout << "\r\033[K"; //clear terminal
-            if (exit_code == 0) std::cout << "[" << job.j_num << "]+  Done    " << job.command_str << std::endl;
-            else std::cout << "[" << job.j_num << "]+  Exit " << exit_code << "  " << job.command_str << std::endl;
-            std::cout << "$ " << snapshot << std::flush; //reprint input snapshot
-            job.status = false;
-            {
-                std::lock_guard<std::mutex> lock(j_mutex);
-                jobs.erase(job.j_num); //remove job
-            }
-        }
-    };
-    //create job
-    Job* job_ptr; //store a pointer
-    int next_id;
-    {
-        std::lock_guard<std::mutex> lock(j_mutex);
-        next_id = !jobs.empty() ? jobs.rbegin()->first + 1 : 1; //increment ID to be 1 greater than current largest which will always be latest added
-        jobs[next_id] = {next_id, pid, full_cmd, true}; //add job to hashmap
-        job_ptr = &jobs[next_id]; //assign ptr
-    }
-    std::cout << "[" << next_id << "] " << pid << std::endl;
-    std::thread t(monitor_func, std::ref(*job_ptr)); //create thread passing func ptr and ref of dereferenced job_ptr which stores our job
-    t.detach(); //run this concurrently dont wait
-}
 std::vector<std::string> parse_redirections(std::vector<std::string>& clean_tokens, std::vector<std::string>& tokens, std::string& redirect_file, std::string& redirect_stderr, int& FLAG_CONST)
 {
     for (size_t i = 0; i < tokens.size(); i++) {

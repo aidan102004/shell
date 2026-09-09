@@ -12,6 +12,7 @@
                 "${fileDirname}/Trie.cpp",
                 "${fileDirname}/shellhistory.cpp",
                 "${fileDirname}/declarebuiltin.cpp",
+                "${fileDirname}/jobsbuiltin.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
@@ -36,6 +37,7 @@
                 "${fileDirname}/Trie.cpp",
                 "${fileDirname}/shellhistory.cpp",
                 "${fileDirname}/declarebuiltin.cpp",
+                "${fileDirname}/jobsbuiltin.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
