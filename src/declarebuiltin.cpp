@@ -158,3 +158,11 @@ std::string DeclareBuiltin::anyToString(const std::any& value) {
     return "unknown";
 }
 
+std::optional<std::any> DeclareBuiltin::get_var(const std::string& key) {
+    auto it = variables.find(key);
+    if (it != variables.end()) {
+        return it->second.value;
+    } else {
+        return std::nullopt;
+    }
+}

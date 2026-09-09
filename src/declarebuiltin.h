@@ -22,6 +22,7 @@ private:
 public:
     DeclareBuiltin();
     void register_handlers();
+    std::optional<std::any> get_var(const std::string& key);
     void handle_builtin(const std::vector<std::string>& tokens);
     void handle_print(const std::string& arg, bool ro) ;
     void add_variable(const std::string& arg, bool ro, const std::string& type);

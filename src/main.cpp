@@ -43,6 +43,7 @@ std::vector<std::string> execute_completer(const fs::path& script, const std::st
 std::string read_input();
 std::string completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count);
 void parse(const std::string& command, std::vector<std::string>& tokens);
+void variables_check(std::vector<std::string>& tokens);
 void populate_from_path();
 std::string longest_common_prefix(const std::vector<std::string>& matches);
 void populate_files();
@@ -192,6 +193,7 @@ void run_chain(std::string& command)
 
         std::vector<std::string> tokens;
         parse(segments[i].command, tokens);
+        variables_check(tokens);
         std::string redirect_file = ""; 
         int FLAG_CONST = O_TRUNC; //default for file redirection
         std::string redirect_stderr = "";
@@ -271,6 +273,46 @@ void run_chain(std::string& command)
         }  
         cur_process_status = status; 
     }
+}
+
+void variables_check(std::vector<std::string>& tokens) {
+    std::vector<std::string> res;
+    std::string cur = "";
+    for (const auto& s : tokens) {
+        for (size_t i = 0; i < s.size(); i++) {
+            char c = s[i];
+            if (c == '$') {
+                if (i + 1 < s.size() && s[i+1] == '{') {
+                    size_t pos = s.find('}', i);
+                    if (pos != std::string::npos) {
+                        auto result = declare_builtin.get_var(s.substr(i + 2, pos - 2 - i));
+                        if (result) {
+                            std::string val = std::any_cast<std::string>(*result);
+                            res.push_back(cur + val);
+                            cur.clear();
+                        }
+                        i = pos;
+                    } else {
+                        cur += s.substr(i);
+                        i = s.size();
+                    }
+                } else {
+                    auto result = declare_builtin.get_var(s.substr(i + 1));
+                    if (result) {
+                        std::string val = std::any_cast<std::string>(*result);
+                        res.push_back(cur + val);
+                        cur.clear();
+                    }
+                    i = s.size();
+                }
+            } else {
+                cur += c;
+            }
+        }
+        if (!cur.empty()) res.push_back(cur);
+        cur.clear();
+    }
+    tokens = res;
 }
 
 std::vector<CommandSegment> split_commands(const std::string& command) {
