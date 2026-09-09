@@ -42,13 +42,14 @@ void ShellHistory::handle_builtin(const std::vector<std::string>& tokens) {
         it->second(arg); //runs the function
         return;
     }
-    std::cerr << "Error: " << flag << " unknown flag\n";
     
     try {
         print_history(history.size() - std::stoi(flag));
+        return;
     } catch (const std::invalid_argument&) {
         std::cerr << "Error: '" << flag << "' is not a valid flag or number\n";
     }
+    std::cerr << "Error: " << flag << " unknown flag\n";
 }
 
 void ShellHistory::print_history(int n) {
