@@ -3,6 +3,7 @@
 #include "./headers/util.h"
 
 namespace fs = std::__fs::filesystem;
+std::unordered_map<std::string, fs::directory_entry> Completer::complete_paths;
 
 std::string Completer::completion(Trie& trie, std::string cur_input, const std::string& full_line, int tab_count) {
     std::vector<std::string> matches = trie.get_children(cur_input);
@@ -23,4 +24,16 @@ std::string Completer::path_completion(const std::string& s, const std::string& 
     } catch(...) {}
     
     return Util::matches_helper(matches, prefix, full_line, tab_count, dir_path);
+}
+
+bool Completer::find_path(const std::string& query) {
+    return complete_paths.find(query) != complete_paths.end(); //return bool if found
+}
+
+std::filesystem::path Completer::get_path(const std::string& key) {
+    auto it = complete_paths.find(key);
+    if (it != complete_paths.end()) {
+        return complete_paths[key].path();
+    }
+    return std::filesystem::path(); //return empty path
 }

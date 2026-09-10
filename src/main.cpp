@@ -50,7 +50,6 @@ std::string read_input();
 std::unordered_set<std::string> commands = {
     "echo", "exit", "type", "pwd", "cd", "complete", "jobs", "history", "declare"
 };
-std::unordered_map<std::string, fs::directory_entry> complete_paths;
 
 //trie declarations
 Trie builtin_trie;
@@ -404,11 +403,11 @@ std::string read_input() {
                 size_t pos = loc_buffer.rfind(' ');
                 std::string arg = loc_buffer.substr(pos + 1);
                 std::string command_name = loc_buffer.substr(0, loc_buffer.find(' '));
-                auto it = complete_paths.find(command_name);
-                if (it != complete_paths.end()) {
+                bool found = Completer::find_path(command_name);
+                if (found) {
                     //handle case where the is custom complete specification for a cmd
                     tab_count++;
-                    s = complete_builtin.run_completer(complete_paths[command_name].path(), command_name, arg, loc_buffer, tab_count); //run completer
+                    s = complete_builtin.run_completer(Completer::get_path(command_name), command_name, arg, loc_buffer, tab_count); //run completer
                 } else if (arg.rfind('/') != std::string::npos) {
                     tab_count++;
                     size_t slash_pos = arg.rfind('/'); //position of the slash
@@ -453,44 +452,4 @@ std::string read_input() {
         current_input.clear();
     }
     return loc_buffer;
-}
-
-void parse(const std::string& command, std::vector<std::string>& tokens) {
-    std::string cur = "";
-        bool iq = false;   // inside single quotes
-        bool idq = false;  // inside double quotes
-        for (size_t i = 0; i < command.size(); i++) {
-            char c = command[i];
-            if (c == '\\' && !iq && !idq) {         // backslash outside quotes
-                if (i + 1 < command.size()) {
-                    cur += command[++i];
-                }
-            } else if (c == '\\' && idq) {          // backslash inside double quotes
-                if (i + 1 < command.size()) {
-                    char next = command[i + 1];
-                    if (next == '"' || next == '\\') {
-                        cur += command[++i];
-                    } else {
-                        cur += c;
-                    }
-                }
-            } else if (c == '\"' && !idq && !iq) {
-                idq = true;
-            } else if (c == '\'' && !iq && !idq) {
-                iq = true;
-            } else if (c == '\'' && iq) {
-                iq = false;
-            } else if (c == '\"' && idq) {
-                idq = false;
-            } else if (c == ' ' && !iq && !idq) {
-                if (!cur.empty()) {
-                    tokens.push_back(cur);
-                    cur = "";
-                }
-            } else {
-                cur += c;
-            }
-        }
-
-        if (!cur.empty()) tokens.push_back(cur);
 }
