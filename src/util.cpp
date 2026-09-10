@@ -2,6 +2,9 @@
 #include <iostream>
 #include <fstream>
 #include <algorithm>
+#include <sstream>
+#include <fcntl.h>
+#include <unistd.h>
 
 namespace fs = std::__fs::filesystem;
 
@@ -57,4 +60,21 @@ std::string Util::longest_common_prefix(const std::vector<std::string>& matches)
         lcp += c;
     }
     return lcp;
+}
+
+std::string Util::find_path(const std::string& arg) {
+    const char* p = std::getenv("PATH");
+    if (!p) return "";
+
+    std::string path = p;
+    std::stringstream ss(path);
+    std::string dir;
+    while (std::getline(ss, dir, ':')) {
+        if (dir.empty()) continue;
+        fs::path full_path = dir + "/" + arg;
+        if (access(full_path.c_str(), X_OK) == 0) {
+            return full_path.string();
+        }
+    }
+    return "";
 }

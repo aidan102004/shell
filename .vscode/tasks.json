@@ -18,6 +18,7 @@
                 "${fileDirname}/completer.cpp",
                 "${fileDirname}/populater.cpp",
                 "${fileDirname}/parser.cpp",
+                "${fileDirname}/shell.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
@@ -48,6 +49,9 @@
                 "${fileDirname}/completer.cpp",
                 "${fileDirname}/populater.cpp",
                 "${fileDirname}/parser.cpp",
+                "${fileDirname}/cdbuiltin.cpp",
+                "${fileDirname}/filemanager.cpp",
+                "${fileDirname}/shell.cpp",
                 "-o",
                 "${fileDirname}/main"
             ],
