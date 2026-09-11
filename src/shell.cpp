@@ -24,6 +24,8 @@ void Shell::register_builtins() {
     builtins["jobs"] = [this](const auto& tokens) {  return handle_jobs(tokens); };
     builtins["history"] = [this](const auto& tokens) {  return handle_history(tokens); };
     builtins["declare"] = [this](const auto& tokens) {   return handle_declare(tokens); };
+    builtins["bg"] = [this](const auto& tokens) {   return handle_bg(tokens); };
+    builtins["fg"] = [this](const auto& tokens) {   return handle_fg(tokens); };
 }
 
 void Shell::setup_trie() {
@@ -424,5 +426,15 @@ int Shell::handle_history(const std::vector<std::string>& tokens) {
 
 int Shell::handle_declare(const std::vector<std::string>& tokens) {
     declare_builtin.handle_builtin(tokens);
+    return 0;
+}
+
+int Shell::handle_bg(const std::vector<std::string>& tokens) {
+    jobs_builtin.handle_bg(tokens);
+    return 0;
+}
+
+int Shell::handle_fg(const std::vector<std::string>& tokens) {
+    jobs_builtin.handle_fg(tokens);
     return 0;
 }

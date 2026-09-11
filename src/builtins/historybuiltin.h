@@ -5,7 +5,7 @@
 #include <map>
 #include <functional>
 
-class ShellHistory {
+class HistoryBuiltin {
     std::vector<std::string> history;
     int index;
     std::string path = "shell_history.txt";
@@ -15,7 +15,7 @@ class ShellHistory {
     void register_handlers();
 
 public:
-    ShellHistory();
+    HistoryBuiltin();
     void startup(const std::string& path);
     void handle_builtin(const std::vector<std::string>& tokens);
     void print_history(int n);

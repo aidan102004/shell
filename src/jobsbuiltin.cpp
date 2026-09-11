@@ -63,3 +63,10 @@ void JobsBuiltin::add_job(pid_t pid, std::string full_cmd)
     std::thread t(monitor_func, std::ref(*job_ptr)); //create thread passing func ptr and ref of dereferenced job_ptr which stores our job
     t.detach(); //run this concurrently dont wait
 }
+
+void JobsBuiltin::handle_bg(const std::vector<std::string>& tokens) {
+    //todo
+}  
+void JobsBuiltin::handle_fg(const std::vector<std::string>& tokens) {
+    //todo
+}

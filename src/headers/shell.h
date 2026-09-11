@@ -2,7 +2,7 @@
 
 #include <string>
 #include <vector>
-#include "../builtins/shellhistory.h"
+#include "../builtins/historybuiltin.h"
 #include "../builtins/declarebuiltin.h"
 #include "../builtins/jobsbuiltin.h"
 #include "../builtins/completebuiltin.h"
@@ -20,7 +20,7 @@ private:
     std::unordered_set<std::string> commands = {
         "echo", "exit", "type", "pwd", "cd", "complete", "jobs", "history", "declare"
     };
-    ShellHistory shell_history;
+    HistoryBuiltin shell_history;
     DeclareBuiltin declare_builtin;
     JobsBuiltin jobs_builtin;
     CompleteBuiltin complete_builtin;
@@ -44,6 +44,8 @@ private:
     int handle_jobs(const std::vector<std::string>& tokens);
     int handle_history(const std::vector<std::string>& tokens);
     int handle_declare(const std::vector<std::string>& tokens);
+    int handle_bg(const std::vector<std::string>& tokens);
+    int handle_fg(const std::vector<std::string>& tokens);
 public:
     Shell();
     void setup_trie();

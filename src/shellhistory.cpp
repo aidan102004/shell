@@ -1,4 +1,4 @@
-#include "./builtins/shellhistory.h"
+#include "./builtins/historybuiltin.h"
 #include <iostream>
 #include <iomanip>
 #include <stdexcept>
@@ -7,7 +7,7 @@
 
 namespace fs = std::__fs::filesystem;
 
-ShellHistory::ShellHistory() : index(0) {
+HistoryBuiltin::HistoryBuiltin() : index(0) {
     static bool initialised = false;
     if (!initialised) {
         register_handlers();
@@ -15,12 +15,12 @@ ShellHistory::ShellHistory() : index(0) {
         initialised = true;
     }
 }
-void ShellHistory::startup(const std::string& path) {
+void HistoryBuiltin::startup(const std::string& path) {
     setenv("HISTFILE", path.c_str(), 1);
     handle_read(path);
 
 }
-void ShellHistory::register_handlers() {
+void HistoryBuiltin::register_handlers() {
     flag_handlers["-r"] = [this](const std::string& arg) {handle_read(arg);};
     flag_handlers["-w"] = [this](const std::string& arg) {handle_write(arg);};
     flag_handlers["-a"] = [this](const std::string& arg) {handle_append(arg);};
@@ -28,7 +28,7 @@ void ShellHistory::register_handlers() {
     flag_handlers["-d"] = [this](const std::string& arg) {handle_delete(arg);};
 } 
 
-void ShellHistory::handle_builtin(const std::vector<std::string>& tokens) {
+void HistoryBuiltin::handle_builtin(const std::vector<std::string>& tokens) {
     if (tokens.size() < 2) {
         print_history(0);
         return;
@@ -52,13 +52,13 @@ void ShellHistory::handle_builtin(const std::vector<std::string>& tokens) {
     std::cerr << "Error: " << flag << " unknown flag\n";
 }
 
-void ShellHistory::print_history(int n) {
+void HistoryBuiltin::print_history(int n) {
     int pad = 4;
     for (size_t i = n; i < history.size(); i++) std::cout << std::setw(pad) << i << " " << history[i] << std::endl;
     
 }
 
-void ShellHistory::handle_read(const std::string& file_name) {
+void HistoryBuiltin::handle_read(const std::string& file_name) {
     std::ifstream file(file_name);
     std::string str; 
     while (std::getline(file, str))
@@ -68,7 +68,7 @@ void ShellHistory::handle_read(const std::string& file_name) {
     index = history.size();
 }
 
-void ShellHistory::handle_write(const std::string& file_name) {
+void HistoryBuiltin::handle_write(const std::string& file_name) {
     std::ofstream file(file_name);
     for (const auto& line : history) {
         file << line + "\n";
@@ -76,7 +76,7 @@ void ShellHistory::handle_write(const std::string& file_name) {
     file.close();
 }
 
-void ShellHistory::handle_append(const std::string& file_name) {
+void HistoryBuiltin::handle_append(const std::string& file_name) {
     std::ofstream file(file_name, std::ios_base::app | std::ios_base::out); //combine flags 
     for (const auto& line : history) {
         file << line + "\n";
@@ -85,29 +85,29 @@ void ShellHistory::handle_append(const std::string& file_name) {
 
 }
 
-void ShellHistory::handle_clear(const std::string& arg) {
+void HistoryBuiltin::handle_clear(const std::string& arg) {
     history.clear();
     std::ofstream file(path, std::ios::trunc);
     file.close();
 }
 
-void ShellHistory::handle_delete(const std::string& arg) {
+void HistoryBuiltin::handle_delete(const std::string& arg) {
     history.erase(history.begin() + std::stoi(arg));
 }
-void ShellHistory::add(const std::string& command) {
+void HistoryBuiltin::add(const std::string& command) {
     if (!command.empty()) {
         history.push_back(command);
         index = history.size();
     }
 }
-std::string ShellHistory::previous() {
+std::string HistoryBuiltin::previous() {
     if (index == 0) return "";
     index--;
     std::cout << "\r\033[K";
     std::cout << "$ " << history[index] << std::flush;
     return history[index];
 }
-std::string ShellHistory::next() {
+std::string HistoryBuiltin::next() {
     if (index == history.size()) return "";
     index++;
     std::cout << "\r\033[K";
@@ -115,6 +115,6 @@ std::string ShellHistory::next() {
     return history[index];
 }
 
-void ShellHistory::close() {
+void HistoryBuiltin::close() {
     handle_append(path);
 }
