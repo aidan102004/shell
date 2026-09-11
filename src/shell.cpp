@@ -4,10 +4,27 @@
 #include "./headers/filemanager.h"
 #include "./headers/global.h"
 #include "./headers/populater.h"
+#include "./headers/raiiguard.h"
 #include <unistd.h>
 #include <iostream>
 #include <filesystem>
 #include <fcntl.h>
+
+Shell::Shell() {
+    register_builtins();
+}
+
+void Shell::register_builtins() {
+    builtins["exit"] = [this](const auto& tokens) { return handle_exit(tokens); };
+    builtins["echo"] = [this](const auto& tokens) { return handle_echo(tokens); };
+    builtins["pwd"] = [this](const auto& tokens) {  return handle_pwd(tokens); };
+    builtins["cd"] = [this](const auto& tokens) { return handle_cd(tokens);};
+    builtins["type"] = [this](const auto& tokens) {return handle_type(tokens); };
+    builtins["complete"] = [this](const auto& tokens) {return handle_complete(tokens); };
+    builtins["jobs"] = [this](const auto& tokens) {  return handle_jobs(tokens); };
+    builtins["history"] = [this](const auto& tokens) {  return handle_history(tokens); };
+    builtins["declare"] = [this](const auto& tokens) {   return handle_declare(tokens); };
+}
 
 void Shell::setup_trie() {
     for (const auto& cmd : commands) {
@@ -19,6 +36,7 @@ void Shell::setup_trie() {
 
 
 void Shell::dispatch(std::string command) {
+    shell_history.add(command); //add command to history
     std::string full_cmd = "";
     while (!command.empty() && command.back() == ' ') command.pop_back(); //strip whitespace
 
@@ -50,91 +68,167 @@ void Shell::dispatch(std::string command) {
     }
 }
 
-void Shell::run_chain(std::string& command) 
-{
-    std::vector<std::string> tokens;
-    auto segments = Parser::split_commands(command);
-    int cur_process_status = 0;
+void Shell::run_chain(std::string& command) {
+    auto segments = Parser::split_commands(command); //parse input based on command operators 
+    int cur_status = 0;
+    
     for (size_t i = 0; i < segments.size(); i++) {
-        //check for pipe | operator 
-        //if (segments[i].op == "|") 
-
-        const std::string& last_op = (i==0) ? "" : segments[i-1].op;
+        //determine the previous operator
+        const std::string& last_op = (i == 0) ? "" : segments[i-1].op;
         
-        if (last_op == "&&" && cur_process_status != 0) continue;
-        if (last_op == "||" && cur_process_status == 0) continue;
-
+        //skip based on && and || logic
+        if (last_op == "&&" && cur_status != 0) continue;
+        if (last_op == "||" && cur_status == 0) continue;
+        
+        //check if this segment starts a pipeline by checking if op is |
+        if (segments[i].op == "|") {
+            //find the end of the pipeline
+            size_t pipeline_end = i;
+            while (pipeline_end < segments.size() && segments[pipeline_end].op == "|") {
+                pipeline_end++;
+            }
+            pipeline_end++; //include the final command
+            cur_status = execute_pipeline(segments, i, pipeline_end); //execute the entire pipeline
+            i = pipeline_end - 1; //skip past the pipeline so we dont process them individually again
+            continue;
+        }
+        
+        //handle regular sequential command
         std::vector<std::string> tokens;
         Parser::parse(segments[i].command, tokens);
         Parser::variables_check(tokens, declare_builtin);
-        std::string redirect_file = ""; 
-        int FLAG_CONST = O_TRUNC; //default for file redirection
-        std::string redirect_stderr = "";
-        std::vector<std::string> clean_tokens;
-        Parser::parse_redirections(clean_tokens, tokens, redirect_file, redirect_stderr, FLAG_CONST);
         
-        if (clean_tokens.empty()) continue;
-        bool is_bg = clean_tokens.back() == "&";
-        if (is_bg) clean_tokens.pop_back();
-
-        std::string cmd = clean_tokens[0];
-
-        int status = 0;
-        if (cmd == "exit") {
-            int code = 0;
-            if (clean_tokens.size() > 1) {
-                try {
-                    code = std::stoi(clean_tokens[1]);
-                } catch (...) {
-                    code = 0; 
-                }
-            }
-            shell_history.close();
-            std::exit(code);
-        } else if (cmd == "type") {
-            int saved_out = FileManager::redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
-            int saved_err = FileManager::redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
-            type_builtin.handle_type(clean_tokens.size() > 1 ? clean_tokens[1] : "", commands);
-            FileManager::restore_fd(STDOUT_FILENO, saved_out);
-            FileManager::restore_fd(STDERR_FILENO, saved_err);
-            status = 0;
-        } else if (cmd == "echo") {
-            int saved_out = FileManager::redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
-            int saved_err = FileManager::redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
-            for (size_t i = 1; i < clean_tokens.size(); i++) {
-                if (i > 1) std::cout << " ";
-                std::cout << clean_tokens[i];
-            }
-            std::cout << std::endl;
-            FileManager::restore_fd(STDOUT_FILENO, saved_out);
-            FileManager::restore_fd(STDERR_FILENO, saved_err);
-            status = 0;
-        } else if (cmd == "pwd") {
-            int saved_out = FileManager::redirect_fd(STDOUT_FILENO, FLAG_CONST, redirect_file);
-            int saved_err = FileManager::redirect_fd(STDERR_FILENO, FLAG_CONST, redirect_stderr);
-            std::cout << fs::current_path().string() << std::endl;
-            FileManager::restore_fd(STDOUT_FILENO, saved_out);
-            FileManager::restore_fd(STDERR_FILENO, saved_err);
-            status = 0;
-        } else if (cmd == "cd") {
-            cd_builtin.handle_cd(clean_tokens.size() > 1 ? clean_tokens[1] : "");
-            status = 0;
-        } else if (cmd == "complete" ){
-            complete_builtin.handle_complete_builtin(clean_tokens);
-            status = 0;
-        } else if (cmd == "jobs") {
-            jobs_builtin.handle_builtin();
-            //handle_jobs_builtin();
-            status = 0;
-        } else if (cmd == "history") {
-            shell_history.handle_builtin(clean_tokens);
-        } else if (cmd == "declare") {
-            declare_builtin.handle_builtin(clean_tokens);
-        } else {
-            status = execute(Util::find_path(cmd), command, clean_tokens, redirect_file, redirect_stderr, FLAG_CONST);
-        }  
-        cur_process_status = status; 
+        std::string redirect_file = "";
+        std::string redirect_stderr = "";
+        int flags = O_TRUNC;
+        std::vector<std::string> clean_tokens;
+        
+        Parser::parse_redirections(clean_tokens, tokens, redirect_file, redirect_stderr, flags);
+        
+        if (!clean_tokens.empty()) {      
+            cur_status = execute_command(clean_tokens, redirect_file, redirect_stderr, flags);  //execute command with redirects
+        }
     }
+}
+
+int Shell::execute_pipeline(const std::vector<CommandSegment>& segments, size_t start, size_t end) {
+    std::vector<pid_t> pids; //stores pids for forked children
+    std::vector<int> pipe_fds; //store file descriptors of created pipes
+    
+    //create all pipes first
+    for (size_t i = start; i < end - 1; i++) {
+        int pipefd[2]; //create file descriptors
+        if (pipe(pipefd) == -1) {
+            perror("pipe");
+            return 1;
+        }
+        pipe_fds.push_back(pipefd[0]); //adds read end
+        pipe_fds.push_back(pipefd[1]); //adds write end
+    }
+    
+    //fork and execute each command, loop through each command in the pipeline
+    for (size_t i = start; i < end; i++) {
+        pid_t pid = fork(); //fork and create child process
+        
+        if (pid == -1) {
+            perror("fork");
+            return 1;
+        }
+        
+        if (pid == 0) {  //child process
+            //redirect stdin from previous pipe if it is not the first
+            if (i > start) {
+                dup2(pipe_fds[2 * (i - start - 1)], STDIN_FILENO);
+            }
+            //redirect stdout to next pipe if not last
+            if (i < end - 1) {
+                dup2(pipe_fds[2 * (i - start) + 1], STDOUT_FILENO);
+            }
+            
+            //close all pipe fds
+            for (int fd : pipe_fds) {
+                close(fd);
+            }
+            
+            //parse command as normal
+            std::vector<std::string> tokens;
+            Parser::parse(segments[i].command, tokens);
+            Parser::variables_check(tokens, declare_builtin);
+            std::string redirect_file = "";
+            std::string redirect_stderr = "";
+            int flags = O_TRUNC;
+            std::vector<std::string> clean_tokens;
+            Parser::parse_redirections(clean_tokens, tokens, redirect_file, redirect_stderr, flags);
+            
+            if (clean_tokens.empty()) {
+                exit(0); //if no valid command we exit process
+            }
+            
+            std::string cmd = clean_tokens[0];
+            
+            //for builtins in pipelines
+            if (builtins.find(cmd) != builtins.end()) {
+                RAIIGuard guard(redirect_file, redirect_stderr, flags, &filename_trie);
+                int status = builtins[cmd](clean_tokens);
+                exit(status);
+            }
+            
+            //for external commands directly call excvp so we dont create grandchild process
+            std::vector<char*> argv;
+            for (auto& token : clean_tokens) {
+                argv.push_back(const_cast<char*>(token.c_str()));
+            }
+            argv.push_back(nullptr); //create arguments and push nullptr to end
+            
+            //handle output redirection if needed
+            if (!redirect_file.empty()) {
+                int fd = open(redirect_file.c_str(), O_WRONLY | O_CREAT | flags, 0644);
+                dup2(fd, STDOUT_FILENO);
+                close(fd);
+            }
+            
+            execvp(clean_tokens[0].c_str(), argv.data());
+            perror("execvp");  //only reached if execvp fails
+            _exit(127);
+        } else {  //parent
+            pids.push_back(pid);
+        }
+    }
+    
+    //parent closes all pipes
+    for (int fd : pipe_fds) {
+        close(fd);
+    }
+    
+    //wait for all children
+    int last_status = 0;
+    for (pid_t pid : pids) {
+        int status = 0;
+        waitpid(pid, &status, 0);
+        last_status = WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+    }
+    
+    return last_status;
+}
+
+int Shell::execute_command(const std::vector<std::string>& clean_tokens,
+                          const std::string& redirect_file,
+                          const std::string& redirect_stderr,
+                          int flags) {
+    if (clean_tokens.empty()) return 0;
+    
+    std::string cmd = clean_tokens[0];
+    
+    //check if its a builtin
+    if (builtins.find(cmd) != builtins.end()) {
+        //use RAII guard to handle redirects
+        RAIIGuard guard(redirect_file, redirect_stderr, flags, &filename_trie);
+        return builtins[cmd](clean_tokens); //run function here
+        //scope ends here and redirects are handled
+    }
+    
+    //external command 
+    return execute(Util::find_path(cmd), "", clean_tokens, redirect_file, redirect_stderr, flags);
 }
 
 int Shell::execute(const std::string& exe_path, const std::string& command,
@@ -273,4 +367,62 @@ std::string Shell::read_input() {
         current_input.clear();
     }
     return loc_buffer;
+}
+
+int Shell::handle_exit(const std::vector<std::string>& tokens) {
+    int code = 0;
+    if (tokens.size() > 1) {
+        try {
+            code = std::stoi(tokens[1]);
+        } catch (...) {
+            code = 0;
+        }
+    }
+    shell_history.close();
+    std::exit(code);
+    return 0; //never reached
+}
+
+int Shell::handle_echo(const std::vector<std::string>& tokens) {
+    for (size_t i = 1; i < tokens.size(); i++) {
+        if (i > 1) std::cout << " ";
+        std::cout << tokens[i];
+    }
+    std::cout << std::endl;
+    return 0;
+}
+
+int Shell::handle_pwd(const std::vector<std::string>& tokens) {
+    std::cout << fs::current_path().string() << std::endl;
+    return 0;
+}
+
+int Shell::handle_cd(const std::vector<std::string>& tokens) {
+    cd_builtin.handle_cd(tokens.size() > 1 ? tokens[1] : "");
+    return 0;
+}
+
+int Shell::handle_type(const std::vector<std::string>& tokens) {
+    type_builtin.handle_type(tokens.size() > 1 ? tokens[1] : "", commands);
+    return 0;
+}
+
+int Shell::handle_complete(const std::vector<std::string>& tokens) {
+    complete_builtin.handle_complete_builtin(tokens);
+    return 0;
+}
+
+int Shell::handle_jobs(const std::vector<std::string>& tokens) {
+    jobs_builtin.handle_builtin();
+    return 0;
+}
+
+int Shell::handle_history(const std::vector<std::string>& tokens) {
+    shell_history.handle_builtin(tokens);
+    return 0;
+}
+
+int Shell::handle_declare(const std::vector<std::string>& tokens) {
+    declare_builtin.handle_builtin(tokens);
+    return 0;
 }

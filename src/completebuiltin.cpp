@@ -8,7 +8,7 @@
 #include <sstream>
 #include "./headers/util.h"
 
-void CompleteBuiltin::handle_complete_builtin(std::vector<std::string>& args) {
+void CompleteBuiltin::handle_complete_builtin(const std::vector<std::string>& args) {
     std::string flag = args[1];
     fs::directory_entry path(args[2]);
     std::string cmd = args.back();
