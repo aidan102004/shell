@@ -39,10 +39,9 @@ BirdShell currently supports:
 - Background jobs - run jobs concurrently with &, which automatically reap once terminated. Display currebt jobs with jobs.
 - History - paramaterised readline history with flags, up-down arrow navigation, persistence 
 - Declare - add variables of different types (int, string, array), and expand them through commands
-
+- Pipelines — chains commands with | (pipe), connecting stdout of one to stdin of the next; supports arbitrary pipeline lengths and integrates with redirections
 
 # Roadmap
- - Pipelines (cmd1 | cmd2 | cmd3)
  - Line editing
  - Extend job control
  - Grep builtin
